@@ -1,0 +1,98 @@
+# ─── Go ────────────────────────────────────────────────────────────────────────
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary / coverage
+*.test
+*.out
+coverage.html
+coverage.txt
+
+# Build output
+/bin/
+/dist/
+/build/
+
+# Go workspace (keep go.work if you use one, but ignore go.work.sum)
+go.work.sum
+
+# ─── Environment & Secrets ─────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+
+# ─── Database & Storage ────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+data/
+uploads/
+storage/
+
+# ─── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Docker ────────────────────────────────────────────────────────────────────
+# (keep Dockerfiles/compose, ignore generated volumes)
+docker-volumes/
+
+# ─── IDE & Editors ─────────────────────────────────────────────────────────────
+# JetBrains (GoLand, IntelliJ)
+.idea/
+*.iml
+*.iws
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
+
+# Vim / Emacs
+*.swp
+*.swo
+*~
+\#*\#
+
+# ─── OS ────────────────────────────────────────────────────────────────────────
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.Trash-*
+
+# ─── Temporary ─────────────────────────────────────────────────────────────────
+tmp/
+temp/
+*.tmp
+*.bak
+*.cache
+
+# ─── Node (if any frontend tooling) ───────────────────────────────────────────
+node_modules/
+.npm/
+
+# ─── Yomira specific ───────────────────────────────────────────────────────────
+# AI chat session logs — not part of source code
+history/
+
+# Crawler downloaded images (large binary assets)
+src/data/images/
+src/data/chapters/
