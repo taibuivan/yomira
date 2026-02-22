@@ -15,11 +15,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/buivan/yomira/internal/auth"
-	"github.com/buivan/yomira/internal/platform/apperr"
-	"github.com/buivan/yomira/internal/platform/ctxkey"
-	"github.com/buivan/yomira/internal/platform/respond"
-	"github.com/buivan/yomira/internal/platform/sec"
+	"github.com/taibuivan/yomira/internal/auth"
+	"github.com/taibuivan/yomira/internal/platform/apperr"
+	"github.com/taibuivan/yomira/internal/platform/ctxkey"
+	"github.com/taibuivan/yomira/internal/platform/respond"
+	"github.com/taibuivan/yomira/internal/platform/sec"
 )
 
 // TokenVerifier defines the interface needed to verify tokens in middleware.

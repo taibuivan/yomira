@@ -19,8 +19,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/buivan/yomira/internal/platform/respond"
-	"github.com/buivan/yomira/internal/platform/validate"
+	"github.com/taibuivan/yomira/internal/platform/respond"
+	"github.com/taibuivan/yomira/internal/platform/validate"
 )
 
 // Handler implements authentication-related HTTP endpoints.

@@ -1,4 +1,4 @@
-module github.com/buivan/yomira
+module github.com/taibuivan/yomira
 
 go 1.24.0
 

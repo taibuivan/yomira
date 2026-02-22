@@ -20,7 +20,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/buivan/yomira/internal/platform/constants"
+	"github.com/taibuivan/yomira/internal/platform/constants"
 )
 
 // Opinionated pool settings for the Yomira workload.

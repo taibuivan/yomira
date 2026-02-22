@@ -26,14 +26,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/buivan/yomira/internal/api"
-	"github.com/buivan/yomira/internal/auth"
-	"github.com/buivan/yomira/internal/platform/config"
-	"github.com/buivan/yomira/internal/platform/constants"
-	"github.com/buivan/yomira/internal/platform/migration"
-	pgstore "github.com/buivan/yomira/internal/platform/postgres"
-	redisstore "github.com/buivan/yomira/internal/platform/redis"
-	"github.com/buivan/yomira/internal/platform/sec"
+	"github.com/taibuivan/yomira/internal/api"
+	"github.com/taibuivan/yomira/internal/auth"
+	"github.com/taibuivan/yomira/internal/platform/config"
+	"github.com/taibuivan/yomira/internal/platform/constants"
+	"github.com/taibuivan/yomira/internal/platform/migration"
+	pgstore "github.com/taibuivan/yomira/internal/platform/postgres"
+	redisstore "github.com/taibuivan/yomira/internal/platform/redis"
+	"github.com/taibuivan/yomira/internal/platform/sec"
 )
 
 func main() {

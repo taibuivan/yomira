@@ -20,10 +20,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
-	"github.com/buivan/yomira/internal/auth"
-	"github.com/buivan/yomira/internal/platform/config"
-	"github.com/buivan/yomira/internal/platform/constants"
-	"github.com/buivan/yomira/internal/platform/middleware"
+	"github.com/taibuivan/yomira/internal/auth"
+	"github.com/taibuivan/yomira/internal/platform/config"
+	"github.com/taibuivan/yomira/internal/platform/constants"
+	"github.com/taibuivan/yomira/internal/platform/middleware"
 )
 
 // Server wraps the chi router and the [http.Server].

@@ -24,7 +24,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/buivan/yomira/internal/platform/apperr"
+	"github.com/taibuivan/yomira/internal/platform/apperr"
 )
 
 // PostgresUserRepository implements the UserRepository interface using pgx.

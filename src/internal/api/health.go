@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/buivan/yomira/internal/platform/respond"
+	"github.com/taibuivan/yomira/internal/platform/respond"
 )
 
 // HealthDependencies holds the injectable dependency checkers for the /ready endpoint.

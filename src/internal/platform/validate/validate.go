@@ -17,7 +17,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/buivan/yomira/internal/platform/apperr"
+	"github.com/taibuivan/yomira/internal/platform/apperr"
 )
 
 var (

@@ -17,9 +17,9 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/buivan/yomira/internal/platform/apperr"
-	"github.com/buivan/yomira/internal/platform/ctxkey"
-	"github.com/buivan/yomira/pkg/pagination"
+	"github.com/taibuivan/yomira/internal/platform/apperr"
+	"github.com/taibuivan/yomira/internal/platform/ctxkey"
+	"github.com/taibuivan/yomira/pkg/pagination"
 )
 
 // SuccessEnvelope is the JSON envelope for successful single-resource responses.

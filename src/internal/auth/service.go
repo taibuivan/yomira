@@ -15,9 +15,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/buivan/yomira/internal/platform/apperr"
-	"github.com/buivan/yomira/internal/platform/sec"
-	"github.com/buivan/yomira/pkg/uuidv7"
+	"github.com/taibuivan/yomira/internal/platform/apperr"
+	"github.com/taibuivan/yomira/internal/platform/sec"
+	"github.com/taibuivan/yomira/pkg/uuidv7"
 )
 
 // TokenProvider defines the contract for generating security tokens.
