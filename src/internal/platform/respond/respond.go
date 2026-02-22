@@ -67,6 +67,15 @@ func NoContent(writer http.ResponseWriter) {
 	writer.WriteHeader(http.StatusNoContent)
 }
 
+// NotImplemented returns a placeholder 501 Not Implemented error
+func NotImplemented(writer http.ResponseWriter, request *http.Request) {
+	Error(writer, request, &apperr.AppError{
+		Code:       "NOT_IMPLEMENTED",
+		Message:    "Endpoint is not fully implemented yet.",
+		HTTPStatus: http.StatusNotImplemented,
+	})
+}
+
 // Error converts any Go error into a standardized JSON API error response.
 func Error(writer http.ResponseWriter, request *http.Request, err error) {
 	var appError *apperr.AppError

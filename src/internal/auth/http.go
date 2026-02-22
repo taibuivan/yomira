@@ -46,8 +46,23 @@ func NewHandler(service *Service) *Handler {
 func (handler *Handler) Routes() chi.Router {
 	router := chi.NewRouter()
 
+	// Public endpoints
 	router.Post("/register", handler.register)
 	router.Post("/login", handler.login)
+	router.Post("/refresh", handler.refresh)
+	router.Post("/verify-email", handler.verifyEmail)
+	router.Post("/forgot-password", handler.forgotPassword)
+	router.Post("/reset-password", handler.resetPassword)
+
+	// Protected endpoints (These will be wrapped by the RequireAuth middleware
+	// at the router level in api/server.go, but we map them here for completeness).
+	// router.Group(func(r chi.Router) {
+	//     r.Use(middleware.RequireAuth)
+	//     r.Post("/logout", handler.logout)
+	//     r.Post("/change-password", handler.changePassword)
+	// })
+	router.Post("/logout", handler.logout)
+	router.Post("/change-password", handler.changePassword)
 
 	return router
 }
@@ -170,4 +185,59 @@ func (handler *Handler) login(writer http.ResponseWriter, request *http.Request)
 		"access_token": session.AccessToken,
 		"user":         session.User,
 	})
+}
+
+// ── ───────────────────────────────────────────────────────────────────────
+// Below are standard handler templates for the remaining Auth endpoints.
+// ── ───────────────────────────────────────────────────────────────────────
+
+// logout handles POST /api/v1/auth/logout requests.
+func (handler *Handler) logout(writer http.ResponseWriter, request *http.Request) {
+	// Not implemented: Requires retrieving UserID from context and invalidating the session.
+	respond.NotImplemented(writer, request)
+}
+
+// refresh handles POST /api/v1/auth/refresh requests.
+func (handler *Handler) refresh(writer http.ResponseWriter, request *http.Request) {
+	// Not implemented: Requires parsing the refresh_token cookie and rotating it.
+	respond.NotImplemented(writer, request)
+}
+
+// verifyEmailRequest represents the JSON payload to verify an email.
+type verifyEmailRequest struct {
+	Token string `json:"token"`
+}
+
+// verifyEmail handles POST /api/v1/auth/verify-email requests.
+func (handler *Handler) verifyEmail(writer http.ResponseWriter, request *http.Request) {
+	var input verifyEmailRequest
+	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+		respond.Error(writer, request, validate.ErrInvalidJSON)
+		return
+	}
+
+	if input.Token == "" {
+		respond.Error(writer, request, validate.RequiredError("token", "is required"))
+		return
+	}
+
+	// Not implemented: Calls authService.VerifyEmail
+
+	respond.NotImplemented(writer, request)
+}
+
+// forgotPassword handles POST /api/v1/auth/forgot-password requests.
+func (handler *Handler) forgotPassword(writer http.ResponseWriter, request *http.Request) {
+	// Not implemented: Parse email, validate, call service to send reset link.
+	respond.NotImplemented(writer, request)
+}
+
+// resetPassword handles POST /api/v1/auth/reset-password requests.
+func (handler *Handler) resetPassword(writer http.ResponseWriter, request *http.Request) {
+	respond.NotImplemented(writer, request)
+}
+
+// changePassword handles POST /api/v1/auth/change-password requests.
+func (handler *Handler) changePassword(writer http.ResponseWriter, request *http.Request) {
+	respond.NotImplemented(writer, request)
 }

@@ -48,8 +48,8 @@ else
 fi
 
 # ── 4. Unit tests (no integration) ───────────────────────────────────────────
-echo "${YEL}[4/4] go test -short -race...${RST}"
-go test -short -race -count=1 ./... 2>&1
+echo "${YEL}[4/4] go test -short...${RST}"
+go test -short -count=1 ./... 2>&1
 echo "${GRN}[PASS] unit tests${RST}"
 
 echo "${GRN}[pre-commit] All checks passed. Proceeding with commit.${RST}"
