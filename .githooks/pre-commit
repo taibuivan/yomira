@@ -1,0 +1,55 @@
+#!/bin/sh
+# .githooks/pre-commit
+# Enforces Yomira Go Coding Standards before every commit.
+# Install: git config core.hooksPath .githooks
+#
+# What this checks:
+#   1. gofmt  — formatting (zero tolerance)
+#   2. go vet — correctness
+#   3. golangci-lint (fast mode) — style & design rules
+#   4. go test -short — unit tests (no Docker required)
+#
+# Skip (NOT recommended): git commit --no-verify
+
+set -e
+
+RED='\033[0;31m'
+GRN='\033[0;32m'
+YEL='\033[0;33m'
+RST='\033[0m'
+
+echo "${YEL}[pre-commit] Running Yomira quality gates...${RST}"
+
+cd src
+
+# ── 1. gofmt ──────────────────────────────────────────────────────────────────
+echo "${YEL}[1/4] gofmt check...${RST}"
+UNFMT=$(gofmt -l . | grep -v vendor | grep -v "_generated.go" || true)
+if [ -n "$UNFMT" ]; then
+  echo "${RED}[FAIL] gofmt: the following files are not formatted:${RST}"
+  echo "$UNFMT"
+  echo "Run: gofmt -w . (or use your editor's format-on-save)"
+  exit 1
+fi
+echo "${GRN}[PASS] gofmt${RST}"
+
+# ── 2. go vet ─────────────────────────────────────────────────────────────────
+echo "${YEL}[2/4] go vet...${RST}"
+go vet ./... 2>&1
+echo "${GRN}[PASS] go vet${RST}"
+
+# ── 3. golangci-lint (fast) ───────────────────────────────────────────────────
+if command -v golangci-lint > /dev/null 2>&1; then
+  echo "${YEL}[3/4] golangci-lint (fast)...${RST}"
+  golangci-lint run --fast --timeout 2m
+  echo "${GRN}[PASS] golangci-lint${RST}"
+else
+  echo "${YEL}[3/4] golangci-lint not found — skipping (install: https://golangci-lint.run)${RST}"
+fi
+
+# ── 4. Unit tests (no integration) ───────────────────────────────────────────
+echo "${YEL}[4/4] go test -short -race...${RST}"
+go test -short -race -count=1 ./... 2>&1
+echo "${GRN}[PASS] unit tests${RST}"
+
+echo "${GRN}[pre-commit] All checks passed. Proceeding with commit.${RST}"

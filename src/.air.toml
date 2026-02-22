@@ -1,0 +1,44 @@
+# .air.toml — Live reload config for the Yomira API server
+# Install: go install github.com/air-verse/air@latest
+# Usage:   air -c .air.toml  (or just: air)
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # Command to build the binary
+  cmd = "go build -o ./tmp/main ./cmd/api"
+  # The binary to run after a successful build
+  bin = "./tmp/main"
+  # Arguments passed to the binary
+  args_bin = []
+  # Watch these directories for changes
+  include_dir = ["cmd", "internal", "pkg"]
+  # Watch these file extensions
+  include_ext = ["go", "env"]
+  # Exclude these from watching
+  exclude_dir = ["tmp", "vendor", "testdata"]
+  exclude_file = []
+  # Exclude files matching these regex patterns
+  exclude_regex = ["_test.go$", "mock_.*\\.go$"]
+  # Delay before restart (ms) — prevents rapid restarts on multiple file changes
+  delay = 200
+  # Stop the old process before building
+  stop_on_error = true
+  # Log only errors and restarts
+  log = "build-errors.log"
+  send_interrupt = true
+  kill_delay = "0.5s"
+
+[log]
+  time = true
+
+[color]
+  main = "magenta"
+  watcher = "cyan"
+  build = "yellow"
+  runner = "green"
+
+[misc]
+  # Delete tmp on exit
+  clean_on_exit = true

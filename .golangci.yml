@@ -1,0 +1,166 @@
+# .golangci.yml — Yomira Go Linter Configuration
+# Docs: https://golangci-lint.run/usage/configuration/
+# Author: tai.buivan.jp@gmail.com
+
+run:
+  timeout: 5m
+  go: "1.22"
+  # Relative to the repo root — covers the whole monorepo
+  modules-download-mode: readonly
+  allow-parallel-runners: true
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+  sort-results: true
+
+linters:
+  disable-all: true
+  enable:
+    # --- Correctness ---
+    - errcheck          # All errors must be handled (no silent _)
+    - govet             # go vet: shadowed vars, composites, etc.
+    - staticcheck       # SA* checks: deprecated APIs, unreachable code, etc.
+    - ineffassign       # Assignment to a var that is never read
+    - unused            # Unexported symbols that are never used
+    - typecheck         # Basic type-checking (compile-equivalent)
+
+    # --- Style & Naming ---
+    - revive            # Modern golint replacement; rule-based
+    - godot             # Doc comments must end with a period
+    - misspell          # Typos in comments and string literals
+    - whitespace        # Extraneous blank lines at start/end of functions
+
+    # --- Design ---
+    - gochecknoinits    # No init() functions (rare exceptions: see exclude-rules)
+    - noctx             # http.NewRequest must use a context variant
+    - nilerr            # Never return (nil, nil) from an error-returning function
+    - wrapcheck         # External errors must be wrapped before returning
+    - exhaustive        # Switch on typed enum must cover all cases
+    - prealloc          # Suggest pre-allocation of slices when size is known
+
+    # --- Security ---
+    - gosec             # G-prefixed security checks (SQL injection, weak rand, etc.)
+
+    # --- Complexity ---
+    - gocyclo           # Cyclomatic complexity ≤ 15 per function
+    - gocognit          # Cognitive complexity ≤ 20 per function
+    - funlen            # Function length ≤ 80 lines
+    - gocritic          # Opinionated style checks (appendAssign, dupArg, etc.)
+
+linters-settings:
+  # errcheck: check ALL error returns, including type assertions
+  errcheck:
+    check-blank: true           # Flag `_ = f()` unless whitelisted
+    check-type-assertions: true # Flag `v, _ := x.(T)` style assertions
+
+  # revive: per-rule configuration
+  revive:
+    severity: warning
+    rules:
+      - name: exported
+        arguments: []            # Every exported symbol must have a godoc comment
+      - name: var-naming         # camelCase / PascalCase
+      - name: package-comments   # Package must have a doc comment
+      - name: error-return       # error must be the last return value
+      - name: increment-decrement# Use i++ not i += 1
+      - name: error-naming       # Error vars must be named ErrXxx
+      - name: unused-parameter   # Warn on unused function parameters
+      - name: receiver-naming    # Consistent receiver names per type
+      - name: redefines-builtin-id # No shadowing of builtin identifiers
+
+  # godot: enforce trailing period on doc comments
+  godot:
+    scope: declarations   # Only check exported declarations
+    capital: true         # First letter must be capital
+
+  # gocyclo: cyclomatic complexity
+  gocyclo:
+    min-complexity: 15    # Functions with complexity > 15 fail
+
+  # gocognit: cognitive complexity (harder to understand than cyclomatic)
+  gocognit:
+    min-complexity: 20
+
+  # funlen: max function length
+  funlen:
+    lines: 80             # Warn if function body > 80 lines
+    statements: 50        # Warn if function has > 50 statements
+
+  # gocritic: enable extra checks
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+    disabled-checks:
+      - commentedOutCode   # We allow some commented-out code with explicit // NOTE
+
+  # exhaustive: typed switch must cover all enum values
+  exhaustive:
+    default-signifies-exhaustive: false    # `default:` does NOT satisfy exhaustive check
+
+  # gosec: security checks
+  gosec:
+    excludes:
+      - G304  # File path from variable — acceptable in config loading
+    severity: medium
+    confidence: medium
+
+  # prealloc hints
+  prealloc:
+    simple: true
+    range-loops: true
+    for-loops: false
+
+  # wrapcheck: external package errors must be wrapped
+  wrapcheck:
+    ignoreSigs:
+      - .Errorf(                 # fmt.Errorf wraps by definition
+      - errors.New(              # creating a new error, not wrapping
+      - errors.Unwrap(
+      - .WithStack(              # pkg/errors
+    ignorePackageGlobs:
+      - github.com/buivan/yomira/internal/shared/apperr # our own errors
+
+issues:
+  # Maximum number of issues per linter
+  max-issues-per-linter: 50
+  max-same-issues: 10
+
+  # Do not fail on new linter additions
+  new: false
+
+  exclude-rules:
+    # Test files: relax doc comments and init checks
+    - path: "_test\\.go$"
+      linters:
+        - godot         # Test functions don't need trailing periods in comments
+        - revive        # Test helper naming conventions differ
+        - funlen        # Test functions with table-driven cases can be long
+        - gocyclo       # Table-driven tests can have high cyclomatic complexity
+        - gocognit
+
+    # Generated files: skip almost everything
+    - path: "mock_.*\\.go$"
+      linters:
+        - gochecknoinits
+        - revive
+        - godot
+        - wrapcheck
+
+    # cmd/main.go: allow longer functions for wiring
+    - path: "cmd/.*/main\\.go$"
+      linters:
+        - funlen
+
+    # Migration runner in testdb package: allow init
+    - path: "tests/testdb/.*\\.go$"
+      linters:
+        - gochecknoinits
+
+    # Suppress wrapcheck for standard library errors that don't need wrapping
+    - source: "pgx\\.ErrNoRows"
+      linters:
+        - wrapcheck
