@@ -129,14 +129,18 @@ func (service *Service) Register(context context.Context, input RegisterInput) (
 
 // LoginInput defines credentials for an authentication attempt.
 type LoginInput struct {
-	Login    string // Can be Username or Email
-	Password string
+	Login     string // Can be Username or Email
+	Password  string
+	UserAgent string
+	IPAddress string
 }
 
 // LoginSession represents a successfully established user session.
 type LoginSession struct {
-	AccessToken string
-	User        *User
+	AccessToken           string
+	RefreshToken          string
+	RefreshTokenExpiresAt time.Time
+	User                  *User
 }
 
 // Login validates user credentials and issues security tokens.
@@ -185,8 +189,110 @@ func (service *Service) Login(context context.Context, input LoginInput) (*Login
 		return nil, fmt.Errorf("auth_service_token_generation_failed: %w", err)
 	}
 
+	// ── 4. Refresh Token Issuance ─────────────────────────────────────────
+
+	refreshToken, err := sec.GenerateSecureToken(32)
+	if err != nil {
+		return nil, fmt.Errorf("auth_service_refresh_token_failed: %w", err)
+	}
+
+	expiresAt := time.Now().Add(30 * 24 * time.Hour) // Valid for 30 days
+	session := &Session{
+		ID:        uuidv7.New(),
+		UserID:    user.ID,
+		TokenHash: sec.HashToken(refreshToken),
+		UserAgent: input.UserAgent,
+		IPAddress: input.IPAddress,
+		ExpiresAt: expiresAt,
+		IsRevoked: false,
+	}
+
+	if err := service.sessionRepository.Create(context, session); err != nil {
+		return nil, fmt.Errorf("auth_service_session_creation_failed: %w", err)
+	}
+
 	return &LoginSession{
-		AccessToken: accessToken,
-		User:        user,
+		AccessToken:           accessToken,
+		RefreshToken:          refreshToken,
+		RefreshTokenExpiresAt: expiresAt,
+		User:                  user,
+	}, nil
+}
+
+// Logout permanently revokes the user's active session.
+// This ensures that the tracked refresh token can never be used again.
+func (service *Service) Logout(context context.Context, refreshToken string) error {
+	tokenHash := sec.HashToken(refreshToken)
+	session, err := service.sessionRepository.FindByTokenHash(context, tokenHash)
+	if err != nil {
+		// If session is already gone or invalid, we consider logout successful (idempotent operation).
+		return nil
+	}
+
+	if err := service.sessionRepository.Revoke(context, session.ID); err != nil {
+		return fmt.Errorf("auth_service_logout_failed: %w", err)
+	}
+
+	return nil
+}
+
+// RefreshSession implements the Refresh Token Rotation mechanism.
+// It verifies the existing refresh token, revokes it to prevent reuse (preventing replay attacks),
+// and issues a fresh pair of Access and Refresh tokens.
+func (service *Service) RefreshSession(context context.Context, refreshToken, userAgent, ipAddress string) (*LoginSession, error) {
+	// ── 1. Find Existing Session ──────────────────────────────────────────
+
+	tokenHash := sec.HashToken(refreshToken)
+	session, err := service.sessionRepository.FindByTokenHash(context, tokenHash)
+	if err != nil {
+		// The token is either expired, already revoked, or completely invalid.
+		return nil, apperr.Unauthorized("Invalid or expired refresh token")
+	}
+
+	// ── 2. Rotation (Revoke Old Session) ──────────────────────────────────
+
+	if err := service.sessionRepository.Revoke(context, session.ID); err != nil {
+		return nil, fmt.Errorf("auth_service_refresh_revoke_failed: %w", err)
+	}
+
+	// ── 3. Find User ──────────────────────────────────────────────────────
+
+	user, err := service.userRepository.FindByID(context, session.UserID)
+	if err != nil {
+		return nil, apperr.Unauthorized("User not found or suspended")
+	}
+
+	// ── 4. Issue New Tokens ───────────────────────────────────────────────
+
+	accessToken, err := service.tokenProvider.GenerateAccessToken(user.ID, user.Username, string(user.Role), 15*time.Minute)
+	if err != nil {
+		return nil, fmt.Errorf("auth_service_refresh_access_token_failed: %w", err)
+	}
+
+	newRefreshToken, err := sec.GenerateSecureToken(32)
+	if err != nil {
+		return nil, fmt.Errorf("auth_service_refresh_secure_token_failed: %w", err)
+	}
+
+	expiresAt := time.Now().Add(30 * 24 * time.Hour)
+	newSession := &Session{
+		ID:        uuidv7.New(),
+		UserID:    user.ID,
+		TokenHash: sec.HashToken(newRefreshToken),
+		UserAgent: userAgent,
+		IPAddress: ipAddress,
+		ExpiresAt: expiresAt,
+		IsRevoked: false,
+	}
+
+	if err := service.sessionRepository.Create(context, newSession); err != nil {
+		return nil, fmt.Errorf("auth_service_refresh_session_creation_failed: %w", err)
+	}
+
+	return &LoginSession{
+		AccessToken:           accessToken,
+		RefreshToken:          newRefreshToken,
+		RefreshTokenExpiresAt: expiresAt,
+		User:                  user,
 	}, nil
 }

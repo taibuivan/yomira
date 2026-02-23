@@ -19,6 +19,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/taibuivan/yomira/internal/platform/apperr"
 	"github.com/taibuivan/yomira/internal/platform/respond"
 	"github.com/taibuivan/yomira/internal/platform/validate"
 )
@@ -102,12 +103,14 @@ func (handler *Handler) register(writer http.ResponseWriter, request *http.Reque
 		respond.Error(writer, request, validate.RequiredError("username", "must be at least 3 characters"))
 		return
 	}
+
 	if input.Email == "" {
 		// Proper Regex email validation is done inside the service/value object
 		// or validator chain, this is a fast-fail check.
 		respond.Error(writer, request, validate.RequiredError("email", "is required"))
 		return
 	}
+
 	if input.Password == "" || len(input.Password) < 8 {
 		respond.Error(writer, request, validate.RequiredError("password", "must be at least 8 characters"))
 		return
@@ -169,8 +172,10 @@ func (handler *Handler) login(writer http.ResponseWriter, request *http.Request)
 	// ── 3. Application Execution ──────────────────────────────────────────
 
 	session, err := handler.authService.Login(request.Context(), LoginInput{
-		Login:    input.Login,
-		Password: input.Password,
+		Login:     input.Login,
+		Password:  input.Password,
+		UserAgent: request.UserAgent(),
+		IPAddress: getClientIP(request),
 	})
 
 	if err != nil {
@@ -180,6 +185,17 @@ func (handler *Handler) login(writer http.ResponseWriter, request *http.Request)
 	}
 
 	// ── 4. Presentation Output ────────────────────────────────────────────
+
+	http.SetCookie(writer, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    session.RefreshToken,
+		Path:     "/api/v1/auth",
+		Domain:   "", // Assuming local/default domain. You might want to make this configurable
+		Expires:  session.RefreshTokenExpiresAt,
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
 
 	respond.OK(writer, map[string]any{
 		"access_token": session.AccessToken,
@@ -193,14 +209,78 @@ func (handler *Handler) login(writer http.ResponseWriter, request *http.Request)
 
 // logout handles POST /api/v1/auth/logout requests.
 func (handler *Handler) logout(writer http.ResponseWriter, request *http.Request) {
-	// Not implemented: Requires retrieving UserID from context and invalidating the session.
-	respond.NotImplemented(writer, request)
+	cookie, err := request.Cookie("refresh_token")
+	if err == nil && cookie != nil && cookie.Value != "" {
+		_ = handler.authService.Logout(request.Context(), cookie.Value)
+	}
+
+	// Clear the cookie regardless of what happens
+	http.SetCookie(writer, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    "",
+		Path:     "/api/v1/auth",
+		MaxAge:   -1,
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
+
+	respond.NoContent(writer)
 }
 
 // refresh handles POST /api/v1/auth/refresh requests.
 func (handler *Handler) refresh(writer http.ResponseWriter, request *http.Request) {
-	// Not implemented: Requires parsing the refresh_token cookie and rotating it.
-	respond.NotImplemented(writer, request)
+	// ── 1. Extract Token Context ──────────────────────────────────────────
+
+	cookie, err := request.Cookie("refresh_token")
+	if err != nil || cookie.Value == "" {
+		respond.Error(writer, request, apperr.Unauthorized("Missing refresh token in cookies"))
+		return
+	}
+
+	// ── 2. Call Core Business Logic ───────────────────────────────────────
+
+	session, err := handler.authService.RefreshSession(
+		request.Context(),
+		cookie.Value,
+		request.UserAgent(),
+		getClientIP(request),
+	)
+
+	if err != nil {
+		respond.Error(writer, request, err)
+		return
+	}
+
+	// ── 3. Present Results & Issue New Cookies ────────────────────────────
+
+	http.SetCookie(writer, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    session.RefreshToken,
+		Path:     "/api/v1/auth",
+		Expires:  session.RefreshTokenExpiresAt,
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
+
+	respond.OK(writer, map[string]any{
+		"access_token": session.AccessToken,
+		"token_type":   "Bearer",
+		"expires_in":   900, // 15 mins (defined in service)
+	})
+}
+
+// getClientIP tries to extract the real IP address of a user over proxy environments.
+func getClientIP(r *http.Request) string {
+	ip := r.Header.Get("X-Real-IP")
+	if ip == "" {
+		ip = r.Header.Get("X-Forwarded-For")
+	}
+	if ip == "" {
+		ip = r.RemoteAddr
+	}
+	return ip
 }
 
 // verifyEmailRequest represents the JSON payload to verify an email.
