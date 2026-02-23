@@ -42,21 +42,24 @@ type TokenProvider interface {
 // This service is critical for security. Any changes to hashing, registration,
 // or login logic must be reviewed by the security team.
 type Service struct {
-	userRepository    UserRepository
-	sessionRepository SessionRepository
-	tokenProvider     TokenProvider
+	userRepository       UserRepository
+	sessionRepository    SessionRepository
+	resetTokenRepository ResetTokenRepository
+	tokenProvider        TokenProvider
 }
 
 // NewService constructs a new [AuthService] with necessary dependencies.
 func NewService(
 	userRepo UserRepository,
 	sessionRepo SessionRepository,
+	resetRepo ResetTokenRepository,
 	tokenProv TokenProvider,
 ) *Service {
 	return &Service{
-		userRepository:    userRepo,
-		sessionRepository: sessionRepo,
-		tokenProvider:     tokenProv,
+		userRepository:       userRepo,
+		sessionRepository:    sessionRepo,
+		resetTokenRepository: resetRepo,
+		tokenProvider:        tokenProv,
 	}
 }
 
@@ -183,20 +186,20 @@ func (service *Service) Login(context context.Context, input LoginInput) (*Login
 
 	// ── 3. Token Issuance ─────────────────────────────────────────────────
 
-	// Tokens are valid for 15 minutes to reduce impact window if leaked.
-	accessToken, err := service.tokenProvider.GenerateAccessToken(user.ID, user.Username, string(user.Role), 15*time.Minute)
+	// Tokens are valid for a short duration to reduce impact window if leaked.
+	accessToken, err := service.tokenProvider.GenerateAccessToken(user.ID, user.Username, string(user.Role), AccessTokenTTL)
 	if err != nil {
 		return nil, fmt.Errorf("auth_service_token_generation_failed: %w", err)
 	}
 
 	// ── 4. Refresh Token Issuance ─────────────────────────────────────────
 
-	refreshToken, err := sec.GenerateSecureToken(32)
+	refreshToken, err := sec.GenerateSecureToken(RefreshTokenLength)
 	if err != nil {
 		return nil, fmt.Errorf("auth_service_refresh_token_failed: %w", err)
 	}
 
-	expiresAt := time.Now().Add(30 * 24 * time.Hour) // Valid for 30 days
+	expiresAt := time.Now().Add(RefreshTokenTTL)
 	session := &Session{
 		ID:        uuidv7.New(),
 		UserID:    user.ID,
@@ -264,17 +267,19 @@ func (service *Service) RefreshSession(context context.Context, refreshToken, us
 
 	// ── 4. Issue New Tokens ───────────────────────────────────────────────
 
-	accessToken, err := service.tokenProvider.GenerateAccessToken(user.ID, user.Username, string(user.Role), 15*time.Minute)
+	accessToken, err := service.tokenProvider.GenerateAccessToken(user.ID, user.Username, string(user.Role), AccessTokenTTL)
 	if err != nil {
 		return nil, fmt.Errorf("auth_service_refresh_access_token_failed: %w", err)
 	}
 
-	newRefreshToken, err := sec.GenerateSecureToken(32)
+	// Generate new refresh token
+	newRefreshToken, err := sec.GenerateSecureToken(RefreshTokenLength)
 	if err != nil {
 		return nil, fmt.Errorf("auth_service_refresh_secure_token_failed: %w", err)
 	}
 
-	expiresAt := time.Now().Add(30 * 24 * time.Hour)
+	// Create new session
+	expiresAt := time.Now().Add(RefreshTokenTTL)
 	newSession := &Session{
 		ID:        uuidv7.New(),
 		UserID:    user.ID,
@@ -295,4 +300,68 @@ func (service *Service) RefreshSession(context context.Context, refreshToken, us
 		RefreshTokenExpiresAt: expiresAt,
 		User:                  user,
 	}, nil
+}
+
+// RequestPasswordReset initiates the forgot-password flow.
+// It generates a secure token, saves it to Redis, and returns it.
+// In a real scenario, this would trigger an email.
+func (service *Service) RequestPasswordReset(ctx context.Context, email string) (string, error) {
+	// Look up user.
+	// NOTE: We don't return NOT_FOUND if the email doesn't exist to prevent user enumeration.
+	user, err := service.userRepository.FindByEmail(ctx, email)
+	if err != nil {
+		// Just log internally if you want, but return success to the client
+		return "", nil
+	}
+
+	// Generate reset token
+	token, err := sec.GenerateSecureToken(ResetTokenLength)
+	if err != nil {
+		return "", fmt.Errorf("auth_service_generate_reset_token_failed: %w", err)
+	}
+
+	// Save to Redis
+	if err := service.resetTokenRepository.Set(ctx, token, user.ID, ResetTokenTTL); err != nil {
+		return "", fmt.Errorf("auth_service_save_reset_token_failed: %w", err)
+	}
+
+	// TODO: Trigger email service with research token link
+	return token, nil
+}
+
+// ResetPassword completes the forgot-password flow.
+// It verifies the token, hashes the new password, updates the DB, and revokes all active sessions.
+func (service *Service) ResetPassword(ctx context.Context, token, newPassword string) error {
+	// ── 1. Verify Token ───────────────────────────────────────────────────
+
+	userID, err := service.resetTokenRepository.Get(ctx, token)
+	if err != nil {
+		return err // Usually apperr.NotFound which mappings to 404/400
+	}
+
+	// ── 2. Security ───────────────────────────────────────────────────────
+
+	hashedPassword, err := sec.HashPassword(newPassword)
+	if err != nil {
+		return fmt.Errorf("auth_service_reset_password_hash_failed: %w", err)
+	}
+
+	// ── 3. Update Storage ─────────────────────────────────────────────────
+
+	if err := service.userRepository.UpdatePassword(ctx, userID, hashedPassword); err != nil {
+		return fmt.Errorf("auth_service_reset_password_update_failed: %w", err)
+	}
+
+	// ── 4. Security Cleanup ───────────────────────────────────────────────
+
+	// Invalidate all active sessions for this user.
+	if err := service.sessionRepository.RevokeAll(ctx, userID); err != nil {
+		// Log error but don't fail the reset process
+		// TODO: Log non-critical cleanup failure
+	}
+
+	// Delete used token from Redis
+	_ = service.resetTokenRepository.Delete(ctx, token)
+
+	return nil
 }

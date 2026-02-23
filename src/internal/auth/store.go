@@ -3,7 +3,10 @@
 
 package auth
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // UserRepository defines the data access contract for user accounts.
 //
@@ -76,4 +79,16 @@ type SessionRepository interface {
 	// DeleteExpired physically removes sessions whose ExpiresAt is in the past.
 	// Intended to be called by a periodic background cleanup worker to reclaim storage.
 	DeleteExpired(ctx context.Context) error
+}
+
+// ResetTokenRepository defines the contract for storing volatile password reset tokens.
+type ResetTokenRepository interface {
+	// Set stores a reset token associated with a userID for a limited duration.
+	Set(ctx context.Context, token string, userID string, ttl time.Duration) error
+
+	// Get retrieves the userID associated with a given reset token.
+	Get(ctx context.Context, token string) (string, error)
+
+	// Delete removes a reset token after successful use.
+	Delete(ctx context.Context, token string) error
 }

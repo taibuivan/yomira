@@ -109,7 +109,8 @@ func main() {
 	// ── 8. Domain Wiring ──────────────────────────────────────────────────
 	userRepository := auth.NewUserRepository(pool)
 	sessionRepository := auth.NewSessionRepository(pool)
-	authService := auth.NewService(userRepository, sessionRepository, jwtSvc)
+	resetRepository := auth.NewResetTokenRepository(rdb)
+	authService := auth.NewService(userRepository, sessionRepository, resetRepository, jwtSvc)
 	authHandler := auth.NewHandler(authService)
 
 	// ── 9. HTTP Server ────────────────────────────────────────────────────

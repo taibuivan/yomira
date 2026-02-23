@@ -16,10 +16,12 @@ package auth
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/taibuivan/yomira/internal/platform/apperr"
+	"github.com/taibuivan/yomira/internal/platform/constants"
 	"github.com/taibuivan/yomira/internal/platform/respond"
 	"github.com/taibuivan/yomira/internal/platform/validate"
 )
@@ -187,9 +189,9 @@ func (handler *Handler) login(writer http.ResponseWriter, request *http.Request)
 	// ── 4. Presentation Output ────────────────────────────────────────────
 
 	http.SetCookie(writer, &http.Cookie{
-		Name:     "refresh_token",
+		Name:     constants.RefreshTokenCookieName,
 		Value:    session.RefreshToken,
-		Path:     "/api/v1/auth",
+		Path:     constants.RefreshTokenCookiePath,
 		Domain:   "", // Assuming local/default domain. You might want to make this configurable
 		Expires:  session.RefreshTokenExpiresAt,
 		Secure:   true,
@@ -209,16 +211,16 @@ func (handler *Handler) login(writer http.ResponseWriter, request *http.Request)
 
 // logout handles POST /api/v1/auth/logout requests.
 func (handler *Handler) logout(writer http.ResponseWriter, request *http.Request) {
-	cookie, err := request.Cookie("refresh_token")
+	cookie, err := request.Cookie(constants.RefreshTokenCookieName)
 	if err == nil && cookie != nil && cookie.Value != "" {
 		_ = handler.authService.Logout(request.Context(), cookie.Value)
 	}
 
 	// Clear the cookie regardless of what happens
 	http.SetCookie(writer, &http.Cookie{
-		Name:     "refresh_token",
+		Name:     constants.RefreshTokenCookieName,
 		Value:    "",
-		Path:     "/api/v1/auth",
+		Path:     constants.RefreshTokenCookiePath,
 		MaxAge:   -1,
 		Secure:   true,
 		HttpOnly: true,
@@ -232,7 +234,7 @@ func (handler *Handler) logout(writer http.ResponseWriter, request *http.Request
 func (handler *Handler) refresh(writer http.ResponseWriter, request *http.Request) {
 	// ── 1. Extract Token Context ──────────────────────────────────────────
 
-	cookie, err := request.Cookie("refresh_token")
+	cookie, err := request.Cookie(constants.RefreshTokenCookieName)
 	if err != nil || cookie.Value == "" {
 		respond.Error(writer, request, apperr.Unauthorized("Missing refresh token in cookies"))
 		return
@@ -255,9 +257,9 @@ func (handler *Handler) refresh(writer http.ResponseWriter, request *http.Reques
 	// ── 3. Present Results & Issue New Cookies ────────────────────────────
 
 	http.SetCookie(writer, &http.Cookie{
-		Name:     "refresh_token",
+		Name:     constants.RefreshTokenCookieName,
 		Value:    session.RefreshToken,
-		Path:     "/api/v1/auth",
+		Path:     constants.RefreshTokenCookiePath,
 		Expires:  session.RefreshTokenExpiresAt,
 		Secure:   true,
 		HttpOnly: true,
@@ -267,7 +269,7 @@ func (handler *Handler) refresh(writer http.ResponseWriter, request *http.Reques
 	respond.OK(writer, map[string]any{
 		"access_token": session.AccessToken,
 		"token_type":   "Bearer",
-		"expires_in":   900, // 15 mins (defined in service)
+		"expires_in":   AccessTokenTTL / time.Second, // Provide in seconds
 	})
 }
 
@@ -306,15 +308,64 @@ func (handler *Handler) verifyEmail(writer http.ResponseWriter, request *http.Re
 	respond.NotImplemented(writer, request)
 }
 
+// forgotPasswordRequest defines the payload for initiating a password reset.
+type forgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
 // forgotPassword handles POST /api/v1/auth/forgot-password requests.
 func (handler *Handler) forgotPassword(writer http.ResponseWriter, request *http.Request) {
-	// Not implemented: Parse email, validate, call service to send reset link.
-	respond.NotImplemented(writer, request)
+	var input forgotPasswordRequest
+	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+		respond.Error(writer, request, validate.ErrInvalidJSON)
+		return
+	}
+
+	if input.Email == "" {
+		respond.Error(writer, request, validate.RequiredError("email", "is required"))
+		return
+	}
+
+	// Request the reset.
+	_, err := handler.authService.RequestPasswordReset(request.Context(), input.Email)
+	if err != nil {
+		respond.Error(writer, request, err)
+		return
+	}
+
+	// Always return a generic success message to prevent email enumeration.
+	respond.OK(writer, map[string]string{
+		"message": "If this email is registered, a reset link has been sent.",
+	})
+}
+
+// resetPasswordRequest defines the payload for completing a password reset.
+type resetPasswordRequest struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
 }
 
 // resetPassword handles POST /api/v1/auth/reset-password requests.
 func (handler *Handler) resetPassword(writer http.ResponseWriter, request *http.Request) {
-	respond.NotImplemented(writer, request)
+	var input resetPasswordRequest
+	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+		respond.Error(writer, request, validate.ErrInvalidJSON)
+		return
+	}
+
+	if input.Token == "" || input.Password == "" {
+		respond.Error(writer, request, validate.RequiredError("token/password", "are required"))
+		return
+	}
+
+	if err := handler.authService.ResetPassword(request.Context(), input.Token, input.Password); err != nil {
+		respond.Error(writer, request, err)
+		return
+	}
+
+	respond.OK(writer, map[string]string{
+		"message": "Password updated successfully",
+	})
 }
 
 // changePassword handles POST /api/v1/auth/change-password requests.

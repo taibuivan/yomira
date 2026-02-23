@@ -42,4 +42,8 @@ const (
 	AuthIssuer = "yomira.app"
 	// ContextKeyUser is the key used to store user claims in the request context.
 	ContextKeyUser = "user_claims"
+	// RefreshTokenCookieName is the name of the cookie that stores the refresh token.
+	RefreshTokenCookieName = "refresh_token"
+	// RefreshTokenCookiePath is the scoped path for the refresh token cookie.
+	RefreshTokenCookiePath = "/api/v1/auth"
 )
