@@ -1,16 +1,25 @@
 // Copyright (c) 2026 Yomira. All rights reserved.
 // Author: tai.buivan.jp@gmail.com
 
-// Package redis provides a managed Redis client for the Yomira application.
-//
-// # Architecture
-//
-// This package handles fast, volatile storage operations (Caching, Rate Limiting).
-// It abstracts away the connection pool details from the Application layer.
+/*
+Package redis provides a managed client for volatile data storage.
+
+It is primarily used for high-speed operations that require expiration, such as
+transient session tokens, rate-limiting buckets, and temporary cache entries.
+
+Core Responsibilities:
+
+  - Volatility: Handles data with TTL (Time-To-Live).
+  - Speed: Low-latency access compared to persistent SQL storage.
+  - Safety: Manages connection pooling and retry logic automatically.
+
+This infrastructure component ensures that heavy read/write auth operations
+do not bottleneck the primary database.
+*/
 package redis
 
 import (
-	"context"
+	stdctx "context"
 	"fmt"
 	"log/slog"
 	"time"
@@ -29,10 +38,10 @@ const (
 // NewClient parses a Redis URL and returns a ready-to-use client.
 //
 // # Parameters
-//   - ctx: Context for the initial ping.
+//   - context: Context for the initial ping.
 //   - redisURL: Redis connection URL.
 //   - logger: Structured logger for connection events.
-func NewClient(ctx context.Context, redisURL string, logger *slog.Logger) (*redis.Client, error) {
+func NewClient(context stdctx.Context, redisURL string, logger *slog.Logger) (*redis.Client, error) {
 	options, err := redis.ParseURL(redisURL)
 	if err != nil {
 		return nil, fmt.Errorf("redis: invalid URL: %w", err)
@@ -50,7 +59,7 @@ func NewClient(ctx context.Context, redisURL string, logger *slog.Logger) (*redi
 	client := redis.NewClient(options)
 
 	// Validate connectivity immediately at startup.
-	if err := Ping(ctx, client); err != nil {
+	if err := Ping(context, client); err != nil {
 		_ = client.Close()
 		return nil, err
 	}
@@ -64,8 +73,8 @@ func NewClient(ctx context.Context, redisURL string, logger *slog.Logger) (*redi
 }
 
 // Ping verifies that the Redis client is healthy.
-func Ping(ctx context.Context, client *redis.Client) error {
-	pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
+func Ping(context stdctx.Context, client *redis.Client) error {
+	pingCtx, cancel := stdctx.WithTimeout(context, pingTimeout)
 	defer cancel()
 
 	if err := client.Ping(pingCtx).Err(); err != nil {

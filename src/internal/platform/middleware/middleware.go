@@ -1,13 +1,22 @@
 // Copyright (c) 2026 Yomira. All rights reserved.
 // Author: tai.buivan.jp@gmail.com
 
-// Package middleware provides the HTTP middleware chain for the Yomira API server.
-//
-// # Architecture
-//
-// Middleware in this package ensures that all cross-cutting concerns (MDC logging,
-// Rate Limiting, CORS, Panic Recovery) are handled consistently before the request
-// reaches any business logic or domain handlers.
+/*
+Package middleware provides the cross-cutting HTTP processing chain.
+
+It acts as a series of decorators around the standard http.Handler, injecting
+traceability, safety, and security into every request lifecycle.
+
+Standard Stack:
+
+  - Trace: RequestID generation for log correlation.
+  - Log: Structured Activity logging (slog).
+  - Guard: Rate limiting and CORS validation.
+  - Safe: Panic recovery to prevent server crashes.
+
+This package ensures that domain handlers can focus purely on business logic
+without worrying about infrastructure-level concerns.
+*/
 package middleware
 
 import (
@@ -28,13 +37,17 @@ import (
 	"github.com/taibuivan/yomira/internal/platform/ctxkey"
 )
 
-// ── 1. RequestID ─────────────────────────────────────────────────────────────
+// # Request Tracing
 
 // RequestID attaches a correlation ID to every request for log tracing.
 func RequestID() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+
+			// 1. Check if the client already provided an ID
 			requestID := request.Header.Get("X-Request-ID")
+
+			// 2. Generate a new one if missing (using UUID v7 for time-sortable properties)
 			if requestID == "" {
 				uuidV7, err := uuid.NewV7()
 				if err != nil {
@@ -44,20 +57,22 @@ func RequestID() func(http.Handler) http.Handler {
 				}
 			}
 
-			ctx := context.WithValue(request.Context(), ctxkey.KeyRequestID, requestID)
+			// 3. Inject into context and response headers
+			context := context.WithValue(request.Context(), ctxkey.KeyRequestID, requestID)
 			writer.Header().Set("X-Request-ID", requestID)
-			next.ServeHTTP(writer, request.WithContext(ctx))
+
+			next.ServeHTTP(writer, request.WithContext(context))
 		})
 	}
 }
 
 // GetRequestID retrieves the request ID from the context.
-func GetRequestID(ctx context.Context) string {
-	id, _ := ctx.Value(ctxkey.KeyRequestID).(string)
+func GetRequestID(context context.Context) string {
+	id, _ := context.Value(ctxkey.KeyRequestID).(string)
 	return id
 }
 
-// ── 2. StructuredLogger ───────────────────────────────────────────────────────
+// # Activity Logging
 
 type statusRecorder struct {
 	http.ResponseWriter
@@ -73,22 +88,25 @@ func (recorder *statusRecorder) WriteHeader(code int) {
 func StructuredLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+
 			startTime := time.Now()
 			wrappedWriter := &statusRecorder{ResponseWriter: writer, status: http.StatusOK}
 
+			// Proceed to downstream handlers
 			next.ServeHTTP(wrappedWriter, request)
 
+			// Calculate final latency and decide on log level based on HTTP status
 			latency := time.Since(startTime).Milliseconds()
 			logLevel := slog.LevelInfo
 
-			switch {
-			case wrappedWriter.status >= 500:
+			if wrappedWriter.status >= 500 {
 				logLevel = slog.LevelError
-			case wrappedWriter.status >= 400:
+			} else if wrappedWriter.status >= 400 {
 				logLevel = slog.LevelWarn
 			}
 
-			logger.Log(request.Context(), logLevel, "http_request",
+			// Output the structured log entry
+			logAtters := []any{
 				slog.String("method", request.Method),
 				slog.String("path", request.URL.Path),
 				slog.Int("status", wrappedWriter.status),
@@ -96,12 +114,19 @@ func StructuredLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 				slog.String("request_id", GetRequestID(request.Context())),
 				slog.String("ip", RealIP(request)),
 				slog.String("user_agent", request.UserAgent()),
-			)
+			}
+
+			// Add user_id if the request is authenticated
+			if claims := GetUser(request.Context()); claims != nil {
+				logAtters = append(logAtters, slog.String("user_id", claims.UserID))
+			}
+
+			logger.Log(request.Context(), logLevel, "http_request", logAtters...)
 		})
 	}
 }
 
-// ── 3. RateLimit ─────────────────────────────────────────────────────────────
+// # Rate Limiting
 
 type rateLimitClient struct {
 	limiter  *rate.Limiter
@@ -114,38 +139,40 @@ var (
 )
 
 // RateLimit limits requests per IP using the token bucket algorithm.
-//
-// # Why Token Bucket?
-//
-// It allows bursts of traffic (e.g., initial page load with many assets) while
-// strictly enforcing a long-term rate, which is superior to fixed-window limits.
-//
-// # Implementation Details
-//
-// - State is kept in-memory (map).
-// - A background goroutine cleans up idle IP trackers to prevent OOM.
-func RateLimit() func(http.Handler) http.Handler {
-	// Periodic cleanup of idle clients
+func RateLimit(context context.Context) func(http.Handler) http.Handler {
+
+	// Start a background cleanup routine that respects context cancellation
 	go func() {
 		ticker := time.NewTicker(constants.RateLimitCleanupInterval)
 		defer ticker.Stop()
-		for range ticker.C {
-			mu.Lock()
-			for ip, clientInfo := range clients {
-				if time.Since(clientInfo.lastSeen) > constants.RateLimitClientTTL {
-					delete(clients, ip)
+
+		for {
+			select {
+			case <-ticker.C:
+				mu.Lock()
+				for ip, clientInfo := range clients {
+					if time.Since(clientInfo.lastSeen) > constants.RateLimitClientTTL {
+						delete(clients, ip)
+					}
 				}
+				mu.Unlock()
+			case <-context.Done():
+				// Stop the goroutine when the application shuts down
+				return
 			}
-			mu.Unlock()
 		}
 	}()
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+
+			// Identify the client by their IP address
 			clientIP := RealIP(request)
 
 			mu.Lock()
 			clientInfo, found := clients[clientIP]
+
+			// Initialize a new limiter if this is a fresh IP
 			if !found {
 				clientInfo = &rateLimitClient{
 					limiter: rate.NewLimiter(
@@ -155,8 +182,11 @@ func RateLimit() func(http.Handler) http.Handler {
 				}
 				clients[clientIP] = clientInfo
 			}
+
+			// Update the activity timestamp
 			clientInfo.lastSeen = time.Now()
 
+			// Check if the request is allowed by the bucket
 			if !clientInfo.limiter.Allow() {
 				mu.Unlock()
 				writeError(writer, http.StatusTooManyRequests, "TOO_MANY_REQUESTS", "Rate limit exceeded")
@@ -169,39 +199,39 @@ func RateLimit() func(http.Handler) http.Handler {
 	}
 }
 
-// ── 4. PanicRecovery ─────────────────────────────────────────────────────────
+// # Reliability & Safety
 
 // PanicRecovery recovers from panics, logs stack trace, and returns 500.
-//
-// # Safety
-//
-// In Go, an unhandled panic in an HTTP handler will kill the connection and
-// print to standard error, but the server stays alive. We catch it here to:
-//  1. Prevent leaking stack traces to the client.
-//  2. Output the stack trace into our structured logging system for alerts.
 func PanicRecovery(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+
+			// Defer a recovery function to catch any runtime exceptions
 			defer func() {
 				if err := recover(); err != nil {
+
+					// Capture the runtime stack trace for diagnostics
 					stackTrace := make([]byte, 2048)
 					length := runtime.Stack(stackTrace, false)
 
+					// Log the incident to our structured logging system
 					logger.ErrorContext(request.Context(), "panic_recovered",
 						slog.Any("error", err),
 						slog.String("stack", string(stackTrace[:length])),
 						slog.String("request_id", GetRequestID(request.Context())),
 					)
 
+					// Return a safe, generic error to the client
 					writeError(writer, http.StatusInternalServerError, "INTERNAL_SERVER_ERROR", "An unexpected error occurred")
 				}
 			}()
+
 			next.ServeHTTP(writer, request)
 		})
 	}
 }
 
-// ── 5. CORS ───────────────────────────────────────────────────────────────────
+// # Cross-Origin Resource Sharing
 
 // AppConfig defines the behavior needed by the CORS middleware.
 type AppConfig interface {
@@ -212,12 +242,15 @@ type AppConfig interface {
 func CORS(cfg AppConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+
+			// 1. Check the Origin header
 			origin := request.Header.Get("Origin")
 			if origin == "" {
 				next.ServeHTTP(writer, request)
 				return
 			}
 
+			// 2. Check if the origin is allowed (strict in PROD, open in DEV)
 			isAllowed := false
 			if cfg.IsDevelopment() {
 				isAllowed = true
@@ -227,6 +260,7 @@ func CORS(cfg AppConfig) func(http.Handler) http.Handler {
 				}
 			}
 
+			// 3. Inject standard CORS headers if authorized
 			if isAllowed {
 				header := writer.Header()
 				header.Set("Access-Control-Allow-Origin", origin)
@@ -237,6 +271,7 @@ func CORS(cfg AppConfig) func(http.Handler) http.Handler {
 				header.Set("Access-Control-Max-Age", "300")
 			}
 
+			// 4. Handle pre-flight requests (OPTIONS)
 			if request.Method == http.MethodOptions {
 				writer.WriteHeader(http.StatusNoContent)
 				return
@@ -247,25 +282,31 @@ func CORS(cfg AppConfig) func(http.Handler) http.Handler {
 	}
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// # Middleware Helpers
 
 // RealIP extracts client IP, respecting common proxy headers.
 func RealIP(request *http.Request) string {
+
+	// Check standard proxy headers first
 	if ip := request.Header.Get("X-Real-IP"); ip != "" {
 		return ip
 	}
+
 	if forwarded := request.Header.Get("X-Forwarded-For"); forwarded != "" {
 		return strings.TrimSpace(strings.Split(forwarded, ",")[0])
 	}
+
+	// Fallback to the direct connection's address
 	host, _, _ := net.SplitHostPort(request.RemoteAddr)
 	return host
 }
 
+// writeError outputs a simple JSON error payload.
 func writeError(writer http.ResponseWriter, status int, code, message string) {
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(status)
 	_ = json.NewEncoder(writer).Encode(map[string]string{
-		"code":  code,
-		"error": message,
+		constants.FieldCode:  code,
+		constants.FieldError: message,
 	})
 }

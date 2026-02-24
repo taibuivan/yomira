@@ -1,17 +1,21 @@
 // Copyright (c) 2026 Yomira. All rights reserved.
 // Author: tai.buivan.jp@gmail.com
 
-// Package apperr defines the central error type used across all Yomira layers.
-//
-// # Architecture
-//
-// Application errors are agnostic to HTTP routing or transport, acting as a rich
-// translation layer between Domain errors and Presentation HTTP status codes.
-//
-// # Flow
-//
-// Every domain or storage error is eventually converted to an [AppError] before
-// being written to the HTTP response by the shared respond package.
+/*
+Package apperr defines the centralized error handling framework for Yomira.
+
+It provides a rich error type that bridges the gap between low-level Domain/Storage
+errors and high-level HTTP responses.
+
+Architecture:
+
+  - AppError: A struct containing machine-readable ErrorCode and user-friendly messages.
+  - Localization: Support for translated error messages (if needed in the future).
+  - Mapping: Explicit mapping from AppError to standard HTTP Status Codes.
+
+Every error that leaves the service layer should be wrapped as an [AppError] to ensure
+consistent API responses.
+*/
 package apperr
 
 import (

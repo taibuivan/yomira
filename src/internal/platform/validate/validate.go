@@ -20,15 +20,20 @@ import (
 	"github.com/taibuivan/yomira/internal/platform/apperr"
 )
 
+// # Common RegEx & Shared Errors
+
 var (
 	// slugRegex matches slug format: lowercase letters, digits, hyphens.
 	slugRegex = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+
 	// uuidRegex matches a UUIDv4 or UUIDv7 string.
 	uuidRegex = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 	// ErrInvalidJSON is returned when the request body cannot be decoded.
 	ErrInvalidJSON = apperr.ValidationError("Invalid JSON payload")
 )
+
+// # Validator Core
 
 // Validator collects field-level validation errors via a fluent, chainable API.
 //
@@ -40,8 +45,12 @@ type Validator struct {
 	errs []apperr.FieldError
 }
 
+// # String Rules
+
 // Required fails if the trimmed value is empty.
 func (v *Validator) Required(field, value string) *Validator {
+
+	// Check if the string is empty after trimming whitespace
 	if strings.TrimSpace(value) == "" {
 		v.add(field, "This field is required")
 	}
@@ -50,6 +59,8 @@ func (v *Validator) Required(field, value string) *Validator {
 
 // MaxLen fails if the Unicode character count exceeds max.
 func (v *Validator) MaxLen(field, value string, max int) *Validator {
+
+	// Count actual Unicode characters, not just bytes
 	if utf8.RuneCountInString(value) > max {
 		v.add(field, fmt.Sprintf("Maximum %d characters", max))
 	}
@@ -58,22 +69,32 @@ func (v *Validator) MaxLen(field, value string, max int) *Validator {
 
 // MinLen fails if the Unicode character count is below min.
 func (v *Validator) MinLen(field, value string, min int) *Validator {
+
+	// Count actual Unicode characters, not just bytes
 	if utf8.RuneCountInString(value) < min {
 		v.add(field, fmt.Sprintf("Minimum %d characters", min))
 	}
 	return v
 }
 
+// # Numeric Rules
+
 // Range fails if the value is outside the [min, max] range (inclusive).
 func (v *Validator) Range(field string, value, min, max int) *Validator {
+
+	// Check if value falls within the specified range
 	if value < min || value > max {
 		v.add(field, fmt.Sprintf("Must be between %d and %d", min, max))
 	}
 	return v
 }
 
+// # Format Rules
+
 // Email fails if the value is not a valid RFC 5322 email address.
 func (v *Validator) Email(field, value string) *Validator {
+
+	// Attempt to parse the address using the standard library
 	if _, err := mail.ParseAddress(value); err != nil {
 		v.add(field, "Must be a valid email address")
 	}
@@ -87,14 +108,26 @@ func (v *Validator) Email(field, value string) *Validator {
 // Slugs must consist only of lowercase letters, digits, and hyphens,
 // with no leading or trailing hyphens.
 func (v *Validator) Slug(field, value string) *Validator {
+
+	// Match against the pre-compiled slug Regex
 	if !slugRegex.MatchString(value) {
 		v.add(field, "Must be a valid URL slug (lowercase letters, digits, hyphens only)")
 	}
 	return v
 }
 
+// URL fails if the value is not a valid HTTP/HTTPS URL.
+func (v *Validator) URL(field, value string) *Validator {
+	if !strings.HasPrefix(value, "http://") && !strings.HasPrefix(value, "https://") {
+		v.add(field, "Must be a valid HTTP/HTTPS URL")
+	}
+	return v
+}
+
 // UUID fails if the value is not a valid UUID string (case-insensitive).
 func (v *Validator) UUID(field, value string) *Validator {
+
+	// Standardize to lowercase before matching
 	lower := strings.ToLower(value)
 	if !uuidRegex.MatchString(lower) {
 		v.add(field, "Must be a valid UUID")
@@ -102,13 +135,19 @@ func (v *Validator) UUID(field, value string) *Validator {
 	return v
 }
 
+// # Logic Rules
+
 // OneOf fails if the value is not in the allowed set of strings.
 func (v *Validator) OneOf(field, value string, allowed ...string) *Validator {
+
+	// Iterate through allowed values
 	for _, a := range allowed {
 		if value == a {
 			return v
 		}
 	}
+
+	// If no match is found, add the error
 	v.add(field, fmt.Sprintf("Must be one of: %s", strings.Join(allowed, ", ")))
 	return v
 }
@@ -119,20 +158,28 @@ func (v *Validator) OneOf(field, value string, allowed ...string) *Validator {
 //
 //	v.Custom ("score", score < 1 || score > 10, "Must be between 1 and 10")
 func (v *Validator) Custom(field string, failed bool, message string) *Validator {
+
+	// If the provided logical condition is met (true), we add the error
 	if failed {
 		v.add(field, message)
 	}
 	return v
 }
 
+// # Output & Helpers
+
 // Err returns a [apperr.AppError] (VALIDATION_ERROR) if any rules failed,
 // or nil if all rules passed.
 //
 // This is the only output method — call it at the end of the chain.
 func (v *Validator) Err() error {
+
+	// If no errors were collected, validation passed
 	if len(v.errs) == 0 {
 		return nil
 	}
+
+	// Return the aggregated validation error
 	return apperr.ValidationError("Validation failed", v.errs...)
 }
 

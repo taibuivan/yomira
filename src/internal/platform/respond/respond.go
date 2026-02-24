@@ -1,14 +1,20 @@
 // Copyright (c) 2026 Yomira. All rights reserved.
 // Author: tai.buivan.jp@gmail.com
 
-// Package respond provides HTTP response helpers used by all API handlers.
-//
-// # Architecture
-//
-// This package centralizes the presentation logic for HTTP responses.
-// It ensures that every response (Success or Error) across the entire application
-// follows a strict, predictable JSON envelope structure. This consistency is
-// crucial for mobile apps and frontend SPAs to parse data robustly.
+/*
+Package respond provides a unified API response envelope for the platform.
+
+It ensures that every HTTP response, whether a success payload or an error
+diagnostic, follows a predictable JSON structure for client robustness.
+
+Architecture:
+
+  - Envelope: All responses are wrapped in a standard structure.
+  - JSON: Default content-type is 'application/json; charset=utf-8'.
+  - Errors: Integrates with 'apperr' for consistent error reporting.
+
+This package eliminates the need for manual JSON marshalling in individual handlers.
+*/
 package respond
 
 import (
@@ -21,6 +27,8 @@ import (
 	"github.com/taibuivan/yomira/internal/platform/ctxkey"
 	"github.com/taibuivan/yomira/pkg/pagination"
 )
+
+// # JSON Envelopes
 
 // SuccessEnvelope is the JSON envelope for successful single-resource responses.
 type SuccessEnvelope struct {
@@ -40,10 +48,18 @@ type ErrorEnvelope struct {
 	Details []apperr.FieldError `json:"details,omitempty"`
 }
 
+// # Response Helpers
+
 // JSON writes a JSON response with the given status code.
 func JSON(writer http.ResponseWriter, statusCode int, payload interface{}) {
+
+	// Set the common JSON header
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	// Write the status first
 	writer.WriteHeader(statusCode)
+
+	// Encode the payload directly to the stream
 	_ = json.NewEncoder(writer).Encode(payload)
 }
 
@@ -76,20 +92,26 @@ func NotImplemented(writer http.ResponseWriter, request *http.Request) {
 	})
 }
 
+// # Error Handling
+
 // Error converts any Go error into a standardized JSON API error response.
 func Error(writer http.ResponseWriter, request *http.Request, err error) {
 	var appError *apperr.AppError
+
+	// If the error is not already an [apperr.AppError], wrap it as an Internal Server Error
 	if !errors.As(err, &appError) {
-		// Unexpected internal error: log full details but hide them from the client for security.
+
+		// Log the raw details internally for debugging
 		logger := getLoggerFromContext(request)
 		logger.ErrorContext(request.Context(), "unhandled_error_swallowed",
 			slog.String("error", err.Error()),
 			slog.String("request_id", getRequestIDFromContext(request)),
 		)
+
 		appError = apperr.Internal(err)
 	}
 
-	// Always log 5xx errors as they indicate server-side issues.
+	// Always log 5xx errors as they indicate server-side failures that need attention
 	if appError.HTTPStatus >= 500 {
 		logger := getLoggerFromContext(request)
 		logger.ErrorContext(request.Context(), "api_server_error",
@@ -99,6 +121,7 @@ func Error(writer http.ResponseWriter, request *http.Request, err error) {
 		)
 	}
 
+	// Write the final standardized JSON error payload
 	JSON(writer, appError.HTTPStatus, ErrorEnvelope{
 		Error:   appError.Message,
 		Code:    appError.Code,
