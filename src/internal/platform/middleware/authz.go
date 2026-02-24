@@ -11,12 +11,11 @@
 package middleware
 
 import (
-	"context"
 	"net/http"
 	"strings"
 
 	"github.com/taibuivan/yomira/internal/platform/apperr"
-	"github.com/taibuivan/yomira/internal/platform/ctxkey"
+	"github.com/taibuivan/yomira/internal/platform/ctxutil"
 	"github.com/taibuivan/yomira/internal/platform/respond"
 	"github.com/taibuivan/yomira/internal/platform/sec"
 )
@@ -63,8 +62,8 @@ func Authenticate(verifier TokenVerifier) func(http.Handler) http.Handler {
 			}
 
 			// 4. Context Injection for downstream handlers/services
-			context := context.WithValue(request.Context(), ctxkey.KeyUser, claims)
-			next.ServeHTTP(writer, request.WithContext(context))
+			ctx := ctxutil.WithAuthUser(request.Context(), claims)
+			next.ServeHTTP(writer, request.WithContext(ctx))
 		})
 	}
 }
@@ -76,7 +75,7 @@ func RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 
 		// Attempt to retrieve user identity from the request context
-		claims := GetUser(request.Context())
+		claims := ctxutil.GetAuthUser(request.Context())
 
 		// If claims are missing, the user haven't logged in
 		if claims == nil {
@@ -94,7 +93,7 @@ func RequireRole(role sec.UserRole) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 
 			// Attempt to retrieve user identity from the request context
-			claims := GetUser(request.Context())
+			claims := ctxutil.GetAuthUser(request.Context())
 
 			// 1. Authentication Check: User MUST be logged in first
 			if claims == nil {
@@ -115,12 +114,4 @@ func RequireRole(role sec.UserRole) func(http.Handler) http.Handler {
 }
 
 // # Helpers
-
-// GetUser retrieves the [*sec.AuthClaims] from the [context.Context].
-func GetUser(context context.Context) *sec.AuthClaims {
-	claims, ok := context.Value(ctxkey.KeyUser).(*sec.AuthClaims)
-	if !ok {
-		return nil
-	}
-	return claims
-}
+// GetAuthUser is now centralized in ctxutil.

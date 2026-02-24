@@ -34,7 +34,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/taibuivan/yomira/internal/platform/constants"
-	"github.com/taibuivan/yomira/internal/platform/ctxkey"
+	"github.com/taibuivan/yomira/internal/platform/ctxutil"
 )
 
 // # Request Tracing
@@ -58,19 +58,15 @@ func RequestID() func(http.Handler) http.Handler {
 			}
 
 			// 3. Inject into context and response headers
-			context := context.WithValue(request.Context(), ctxkey.KeyRequestID, requestID)
+			ctx := ctxutil.WithRequestID(request.Context(), requestID)
 			writer.Header().Set("X-Request-ID", requestID)
 
-			next.ServeHTTP(writer, request.WithContext(context))
+			next.ServeHTTP(writer, request.WithContext(ctx))
 		})
 	}
 }
 
-// GetRequestID retrieves the request ID from the context.
-func GetRequestID(context context.Context) string {
-	id, _ := context.Value(ctxkey.KeyRequestID).(string)
-	return id
-}
+// No longer needed as it is in ctxutil.
 
 // # Activity Logging
 
@@ -85,17 +81,31 @@ func (recorder *statusRecorder) WriteHeader(code int) {
 }
 
 // StructuredLogger logs every request status and performance metrics.
+// It also injects a request-specific logger into the context.
 func StructuredLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 
 			startTime := time.Now()
+			rid := ctxutil.GetRequestID(request.Context())
+			ip := RealIP(request)
+
+			// 1. Create a sub-logger for this specific request
+			requestLogger := logger.With(
+				slog.String("request_id", rid),
+				slog.String("method", request.Method),
+				slog.String("path", request.URL.Path),
+				slog.String("ip", ip),
+			)
+
+			// 2. Inject this logger into the context for downstream use
+			ctx := ctxutil.WithLogger(request.Context(), requestLogger)
 			wrappedWriter := &statusRecorder{ResponseWriter: writer, status: http.StatusOK}
 
-			// Proceed to downstream handlers
-			next.ServeHTTP(wrappedWriter, request)
+			// 3. Proceed to downstream handlers with the enriched context
+			next.ServeHTTP(wrappedWriter, request.WithContext(ctx))
 
-			// Calculate final latency and decide on log level based on HTTP status
+			// 4. Final log entry after the request is finished
 			latency := time.Since(startTime).Milliseconds()
 			logLevel := slog.LevelInfo
 
@@ -105,23 +115,19 @@ func StructuredLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 				logLevel = slog.LevelWarn
 			}
 
-			// Output the structured log entry
+			// Enlist final response metrics
 			logAtters := []any{
-				slog.String("method", request.Method),
-				slog.String("path", request.URL.Path),
 				slog.Int("status", wrappedWriter.status),
 				slog.Int64("latency_ms", latency),
-				slog.String("request_id", GetRequestID(request.Context())),
-				slog.String("ip", RealIP(request)),
 				slog.String("user_agent", request.UserAgent()),
 			}
 
 			// Add user_id if the request is authenticated
-			if claims := GetUser(request.Context()); claims != nil {
+			if claims := ctxutil.GetAuthUser(ctx); claims != nil {
 				logAtters = append(logAtters, slog.String("user_id", claims.UserID))
 			}
 
-			logger.Log(request.Context(), logLevel, "http_request", logAtters...)
+			requestLogger.Log(ctx, logLevel, "http_request_finished", logAtters...)
 		})
 	}
 }
@@ -214,11 +220,13 @@ func PanicRecovery(logger *slog.Logger) func(http.Handler) http.Handler {
 					stackTrace := make([]byte, 2048)
 					length := runtime.Stack(stackTrace, false)
 
+					// Retrieve the request-specific logger from context if available
+					reqLogger := ctxutil.GetLogger(request.Context())
+
 					// Log the incident to our structured logging system
-					logger.ErrorContext(request.Context(), "panic_recovered",
+					reqLogger.ErrorContext(request.Context(), "panic_recovered",
 						slog.Any("error", err),
 						slog.String("stack", string(stackTrace[:length])),
-						slog.String("request_id", GetRequestID(request.Context())),
 					)
 
 					// Return a safe, generic error to the client
