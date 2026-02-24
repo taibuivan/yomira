@@ -60,13 +60,54 @@ func (e *AppError) Error() string { return e.Message }
 // Unwrap allows [errors.Is] and [errors.As] to traverse the cause chain.
 func (e *AppError) Unwrap() error { return e.Cause }
 
+// # Common Error Status Checks
+
+/*
+IsAppError reports whether err (or any error in its chain) is an [*AppError].
+
+Parameters:
+  - err: error
+
+Returns:
+  - bool: True if the error is an AppError
+*/
+func IsAppError(err error) bool {
+	var ae *AppError
+	return errors.As(err, &ae)
+}
+
+/*
+As extracts the [*AppError] from err's chain. It returns nil if not found.
+
+Parameters:
+  - err: error
+
+Returns:
+  - *AppError: The extracted error or nil
+*/
+func As(err error) *AppError {
+	var ae *AppError
+	if errors.As(err, &ae) {
+		return ae
+	}
+	return nil
+}
+
 // # Client Errors (4xx)
 
-// NotFound creates a 404 [AppError] for a named resource.
-//
-// Example:
-//
-//	apperr.NotFound("Comic") // Returns "Comic not found"
+/*
+NotFound creates a 404 [AppError] for a named resource.
+
+Example:
+
+	apperr.NotFound("Comic") // Returns "Comic not found"
+
+Parameters:
+  - resource: string (Name of the entity)
+
+Returns:
+  - *AppError: Formatted NOT_FOUND error
+*/
 func NotFound(resource string) *AppError {
 	return &AppError{
 		Code:       "NOT_FOUND",
@@ -75,7 +116,15 @@ func NotFound(resource string) *AppError {
 	}
 }
 
-// Unauthorized creates a 401 [AppError].
+/*
+Unauthorized creates a 401 [AppError].
+
+Parameters:
+  - msg: string (Reason for failure)
+
+Returns:
+  - *AppError: Formatted UNAUTHORIZED error
+*/
 func Unauthorized(msg string) *AppError {
 	return &AppError{
 		Code:       "UNAUTHORIZED",
@@ -84,7 +133,15 @@ func Unauthorized(msg string) *AppError {
 	}
 }
 
-// Forbidden creates a 403 [AppError].
+/*
+Forbidden creates a 403 [AppError].
+
+Parameters:
+  - msg: string (Reason for rejection)
+
+Returns:
+  - *AppError: Formatted FORBIDDEN error
+*/
 func Forbidden(msg string) *AppError {
 	return &AppError{
 		Code:       "FORBIDDEN",
@@ -93,7 +150,15 @@ func Forbidden(msg string) *AppError {
 	}
 }
 
-// Conflict creates a 409 [AppError] for duplicate or unique-constraint violations.
+/*
+Conflict creates a 409 [AppError] for duplicate or unique-constraint violations.
+
+Parameters:
+  - msg: string
+
+Returns:
+  - *AppError: Formatted CONFLICT error
+*/
 func Conflict(msg string) *AppError {
 	return &AppError{
 		Code:       "CONFLICT",
@@ -102,7 +167,16 @@ func Conflict(msg string) *AppError {
 	}
 }
 
-// ValidationError creates a 400 [AppError] with optional per-field details.
+/*
+ValidationError creates a 400 [AppError] with optional per-field details.
+
+Parameters:
+  - msg: string
+  - details: ...FieldError
+
+Returns:
+  - *AppError: Formatted VALIDATION_ERROR error
+*/
 func ValidationError(msg string, details ...FieldError) *AppError {
 	return &AppError{
 		Code:       "VALIDATION_ERROR",
@@ -112,7 +186,15 @@ func ValidationError(msg string, details ...FieldError) *AppError {
 	}
 }
 
-// RateLimited creates a 429 [AppError].
+/*
+RateLimited creates a 429 [AppError].
+
+Parameters:
+  - retryAfterSeconds: int
+
+Returns:
+  - *AppError: Formatted RATE_LIMITED error
+*/
 func RateLimited(retryAfterSeconds int) *AppError {
 	return &AppError{
 		Code:       "RATE_LIMITED",
@@ -121,7 +203,15 @@ func RateLimited(retryAfterSeconds int) *AppError {
 	}
 }
 
-// Unprocessable creates a 422 [AppError] for semantically invalid input.
+/*
+Unprocessable creates a 422 [AppError] for semantically invalid input.
+
+Parameters:
+  - msg: string
+
+Returns:
+  - *AppError: Formatted UNPROCESSABLE error
+*/
 func Unprocessable(msg string) *AppError {
 	return &AppError{
 		Code:       "UNPROCESSABLE",
@@ -132,8 +222,19 @@ func Unprocessable(msg string) *AppError {
 
 // # Server Errors (5xx)
 
-// Internal creates a 500 [AppError] wrapping an unexpected server-side error.
-// The cause is stored for logging but is never sent to the client.
+/*
+Internal creates a 500 [AppError] wrapping an unexpected server-side error.
+
+Description:
+The cause is stored for logging but is never sent to the client to prevent
+leaking internal details.
+
+Parameters:
+  - cause: error (The raw underlying failure)
+
+Returns:
+  - *AppError: Formatted INTERNAL_ERROR error
+*/
 func Internal(cause error) *AppError {
 	return &AppError{
 		Code:       "INTERNAL_ERROR",
@@ -143,28 +244,19 @@ func Internal(cause error) *AppError {
 	}
 }
 
-// ServiceUnavailable creates a 503 [AppError] for maintenance mode.
+/*
+ServiceUnavailable creates a 503 [AppError] for maintenance mode.
+
+Parameters:
+  - msg: string
+
+Returns:
+  - *AppError: Formatted SERVICE_UNAVAILABLE error
+*/
 func ServiceUnavailable(msg string) *AppError {
 	return &AppError{
 		Code:       "SERVICE_UNAVAILABLE",
 		Message:    msg,
 		HTTPStatus: http.StatusServiceUnavailable,
 	}
-}
-
-// # Helpers
-
-// IsAppError reports whether err (or any error in its chain) is an [*AppError].
-func IsAppError(err error) bool {
-	var ae *AppError
-	return errors.As(err, &ae)
-}
-
-// As extracts the [*AppError] from err's chain. It returns nil if not found.
-func As(err error) *AppError {
-	var ae *AppError
-	if errors.As(err, &ae) {
-		return ae
-	}
-	return nil
 }

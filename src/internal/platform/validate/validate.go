@@ -47,7 +47,16 @@ type Validator struct {
 
 // # String Rules
 
-// Required fails if the trimmed value is empty.
+/*
+Required fails if the trimmed value is empty.
+
+Parameters:
+  - field: string (JSON field name)
+  - value: string (Input to check)
+
+Returns:
+  - *Validator: Fluent receiver
+*/
 func (v *Validator) Required(field, value string) *Validator {
 
 	// Check if the string is empty after trimming whitespace
@@ -57,7 +66,17 @@ func (v *Validator) Required(field, value string) *Validator {
 	return v
 }
 
-// MaxLen fails if the Unicode character count exceeds max.
+/*
+MaxLen fails if the Unicode character count exceeds max.
+
+Parameters:
+  - field: string
+  - value: string
+  - max: int (Upper bound)
+
+Returns:
+  - *Validator: Fluent receiver
+*/
 func (v *Validator) MaxLen(field, value string, max int) *Validator {
 
 	// Count actual Unicode characters, not just bytes
@@ -67,7 +86,17 @@ func (v *Validator) MaxLen(field, value string, max int) *Validator {
 	return v
 }
 
-// MinLen fails if the Unicode character count is below min.
+/*
+MinLen fails if the Unicode character count is below min.
+
+Parameters:
+  - field: string
+  - value: string
+  - min: int (Lower bound)
+
+Returns:
+  - *Validator: Fluent receiver
+*/
 func (v *Validator) MinLen(field, value string, min int) *Validator {
 
 	// Count actual Unicode characters, not just bytes
@@ -79,7 +108,18 @@ func (v *Validator) MinLen(field, value string, min int) *Validator {
 
 // # Numeric Rules
 
-// Range fails if the value is outside the [min, max] range (inclusive).
+/*
+Range fails if the value is outside the [min, max] range (inclusive).
+
+Parameters:
+  - field: string
+  - value: int
+  - min: int
+  - max: int
+
+Returns:
+  - *Validator: Fluent receiver
+*/
 func (v *Validator) Range(field string, value, min, max int) *Validator {
 
 	// Check if value falls within the specified range
@@ -91,7 +131,16 @@ func (v *Validator) Range(field string, value, min, max int) *Validator {
 
 // # Format Rules
 
-// Email fails if the value is not a valid RFC 5322 email address.
+/*
+Email fails if the value is not a valid RFC 5322 email address.
+
+Parameters:
+  - field: string
+  - value: string
+
+Returns:
+  - *Validator: Fluent receiver
+*/
 func (v *Validator) Email(field, value string) *Validator {
 
 	// Attempt to parse the address using the standard library
@@ -101,12 +150,20 @@ func (v *Validator) Email(field, value string) *Validator {
 	return v
 }
 
-// Slug fails if the value is not a valid URL slug.
-//
-// # Format
-//
-// Slugs must consist only of lowercase letters, digits, and hyphens,
-// with no leading or trailing hyphens.
+/*
+Slug fails if the value is not a valid URL slug.
+
+# Format
+Slugs must consist only of lowercase letters, digits, and hyphens,
+with no leading or trailing hyphens.
+
+Parameters:
+  - field: string
+  - value: string
+
+Returns:
+  - *Validator: Fluent receiver
+*/
 func (v *Validator) Slug(field, value string) *Validator {
 
 	// Match against the pre-compiled slug Regex
@@ -116,7 +173,16 @@ func (v *Validator) Slug(field, value string) *Validator {
 	return v
 }
 
-// URL fails if the value is not a valid HTTP/HTTPS URL.
+/*
+URL fails if the value is not a valid HTTP/HTTPS URL.
+
+Parameters:
+  - field: string
+  - value: string
+
+Returns:
+  - *Validator: Fluent receiver
+*/
 func (v *Validator) URL(field, value string) *Validator {
 	if !strings.HasPrefix(value, "http://") && !strings.HasPrefix(value, "https://") {
 		v.add(field, "Must be a valid HTTP/HTTPS URL")
@@ -124,7 +190,16 @@ func (v *Validator) URL(field, value string) *Validator {
 	return v
 }
 
-// UUID fails if the value is not a valid UUID string (case-insensitive).
+/*
+UUID fails if the value is not a valid UUID string (case-insensitive).
+
+Parameters:
+  - field: string
+  - value: string
+
+Returns:
+  - *Validator: Fluent receiver
+*/
 func (v *Validator) UUID(field, value string) *Validator {
 
 	// Standardize to lowercase before matching
@@ -137,7 +212,17 @@ func (v *Validator) UUID(field, value string) *Validator {
 
 // # Logic Rules
 
-// OneOf fails if the value is not in the allowed set of strings.
+/*
+OneOf fails if the value is not in the allowed set of strings.
+
+Parameters:
+  - field: string
+  - value: string
+  - allowed: ...string (Whitelisted values)
+
+Returns:
+  - *Validator: Fluent receiver
+*/
 func (v *Validator) OneOf(field, value string, allowed ...string) *Validator {
 
 	// Iterate through allowed values
@@ -152,11 +237,21 @@ func (v *Validator) OneOf(field, value string, allowed ...string) *Validator {
 	return v
 }
 
-// Custom adds a failure with a custom message if the condition is true.
-//
-// # Example
-//
-//	v.Custom ("score", score < 1 || score > 10, "Must be between 1 and 10")
+/*
+Custom adds a failure with a custom message if the condition is true.
+
+Example:
+
+	v.Custom ("score", score < 1 || score > 10, "Must be between 1 and 10")
+
+Parameters:
+  - field: string
+  - failed: bool (Condition that triggers error)
+  - message: string (Error message)
+
+Returns:
+  - *Validator: Fluent receiver
+*/
 func (v *Validator) Custom(field string, failed bool, message string) *Validator {
 
 	// If the provided logical condition is met (true), we add the error
@@ -168,10 +263,16 @@ func (v *Validator) Custom(field string, failed bool, message string) *Validator
 
 // # Output & Helpers
 
-// Err returns a [apperr.AppError] (VALIDATION_ERROR) if any rules failed,
-// or nil if all rules passed.
-//
-// This is the only output method — call it at the end of the chain.
+/*
+Err returns a [apperr.AppError] (VALIDATION_ERROR) if any rules failed,
+or nil if all rules passed.
+
+Description:
+This is the only output method — call it at the end of the chain.
+
+Returns:
+  - error: Aggregated AppError or nil
+*/
 func (v *Validator) Err() error {
 
 	// If no errors were collected, validation passed
@@ -183,7 +284,12 @@ func (v *Validator) Err() error {
 	return apperr.ValidationError("Validation failed", v.errs...)
 }
 
-// HasErrors reports whether any validation rule has failed so far.
+/*
+HasErrors reports whether any validation rule has failed so far.
+
+Returns:
+  - bool: True if errors exist
+*/
 func (v *Validator) HasErrors() bool {
 	return len(v.errs) > 0
 }
@@ -193,7 +299,16 @@ func (v *Validator) add(field, message string) {
 	v.errs = append(v.errs, apperr.FieldError{Field: field, Message: message})
 }
 
-// RequiredError is a shortcut to create a single-field validation error.
+/*
+RequiredError is a shortcut to create a single-field validation error.
+
+Parameters:
+  - field: string
+  - message: string
+
+Returns:
+  - *apperr.AppError: Validation error
+*/
 func RequiredError(field, message string) *apperr.AppError {
 	return apperr.ValidationError("Validation failed", apperr.FieldError{
 		Field:   field,
