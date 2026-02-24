@@ -97,3 +97,18 @@ const (
 	FieldVersion = "version"
 	FieldChecks  = "checks"
 )
+
+// # Database Schemas
+
+const (
+	SchemaCore  = "core"
+	SchemaUsers = "users"
+)
+
+// # Redis Prefixes (Cache Taxonomy)
+
+const (
+	RedisPrefixResetToken  = "auth:reset_token:"
+	RedisPrefixVerifyToken = "auth:verify_token:"
+	RedisPrefixSession     = "auth:session:"
+)

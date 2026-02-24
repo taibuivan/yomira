@@ -26,6 +26,8 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/caarlos0/env/v11"
 )
@@ -77,7 +79,37 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: failed to parse environment variables: %w", err)
 	}
 
+	// Semantic Validation
+	// Ensure that while variables exist, they also contain logically valid data.
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("config: validation failed: %w", err)
+	}
+
 	return cfg, nil
+}
+
+// Validate performs deep semantic checks on the loaded configuration.
+func (c *Config) Validate() error {
+	// 1. Connection String Schema Validation
+	if !strings.HasPrefix(c.DatabaseURL, "postgres://") && !strings.HasPrefix(c.DatabaseURL, "postgresql://") {
+		return fmt.Errorf("DATABASE_URL must start with postgres:// or postgresql://")
+	}
+
+	if !strings.HasPrefix(c.RedisURL, "redis://") && !strings.HasPrefix(c.RedisURL, "rediss://") {
+		return fmt.Errorf("REDIS_URL must start with redis:// or rediss://")
+	}
+
+	// 2. Cryptographic Asset Integrity
+	// Ensure critical security files actually exist on the filesystem to prevent runtime signing panics.
+	if _, err := os.Stat(c.JWTPrivKeyPath); os.IsNotExist(err) {
+		return fmt.Errorf("JWT_PRIVATE_KEY_PATH file not found: %s", c.JWTPrivKeyPath)
+	}
+
+	if _, err := os.Stat(c.JWTPubKeyPath); os.IsNotExist(err) {
+		return fmt.Errorf("JWT_PUBLIC_KEY_PATH file not found: %s", c.JWTPubKeyPath)
+	}
+
+	return nil
 }
 
 // IsDevelopment reports whether the server is running in development mode.
