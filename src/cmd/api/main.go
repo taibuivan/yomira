@@ -44,15 +44,20 @@ import (
 	"time"
 
 	"github.com/taibuivan/yomira/internal/api"
+	"github.com/taibuivan/yomira/internal/core/artist"
+	"github.com/taibuivan/yomira/internal/core/author"
+	"github.com/taibuivan/yomira/internal/core/chapter"
 	"github.com/taibuivan/yomira/internal/core/comic"
 	"github.com/taibuivan/yomira/internal/core/group"
-	"github.com/taibuivan/yomira/internal/core/reference"
+	"github.com/taibuivan/yomira/internal/core/language"
+	"github.com/taibuivan/yomira/internal/core/tag"
 	"github.com/taibuivan/yomira/internal/platform/config"
 	"github.com/taibuivan/yomira/internal/platform/constants"
 	"github.com/taibuivan/yomira/internal/platform/migration"
 	pgstore "github.com/taibuivan/yomira/internal/platform/postgres"
 	redisstore "github.com/taibuivan/yomira/internal/platform/redis"
 	"github.com/taibuivan/yomira/internal/platform/sec"
+	"github.com/taibuivan/yomira/internal/users/account"
 	"github.com/taibuivan/yomira/internal/users/auth"
 )
 
@@ -151,29 +156,54 @@ func run() error {
 	verifyRepo := auth.NewVerificationTokenRepository(rdb)
 
 	// # 9. Auth Service & Handler
-	authSvc := auth.NewService(userRepo, sessionRepo, resetRepo, verifyRepo, jwtSvc)
+	authSvc := auth.NewService(userRepo, sessionRepo, resetRepo, verifyRepo, jwtSvc, log)
 	authHdl := auth.NewHandler(authSvc)
 
-	// # 10. Comic Service & Handler
+	// # 10. Comic & Chapter Services
 	comicRepo := comic.NewComicRepository(pool)
-	chapterRepo := comic.NewChapterRepository(pool)
-	comicSvc := comic.NewService(comicRepo, chapterRepo)
+	comicSvc := comic.NewService(comicRepo, log)
 	comicHdl := comic.NewHandler(comicSvc)
 
-	// # 11. Reference & Group
-	refSvc := reference.NewService(reference.NewPostgresRepository(pool))
-	refHdl := reference.NewHandler(refSvc)
-	groupSvc := group.NewService(group.NewPostgresRepository(pool))
+	chapterRepo := chapter.NewChapterRepository(pool)
+	chapterSvc := chapter.NewService(chapterRepo, log)
+	chapterHdl := chapter.NewHandler(chapterSvc)
+
+	// # 11. Reference Domains & Group
+	authorSvc := author.NewService(author.NewPostgresRepository(pool), log)
+	authorHdl := author.NewHandler(authorSvc)
+
+	artistSvc := artist.NewService(artist.NewPostgresRepository(pool), log)
+	artistHdl := artist.NewHandler(artistSvc)
+
+	languageSvc := language.NewService(language.NewPostgresRepository(pool), log)
+	languageHdl := language.NewHandler(languageSvc)
+
+	tagSvc := tag.NewService(tag.NewPostgresRepository(pool), log)
+	tagHdl := tag.NewHandler(tagSvc)
+
+	groupSvc := group.NewService(group.NewPostgresRepository(pool), log)
 	groupHdl := group.NewHandler(groupSvc)
 
-	// # 12. API Assembly
+	// # 12. Account Management
+	accRepo := account.NewAccountRepository(pool)
+	prefRepo := account.NewPreferencesRepository(pool)
+	accSessRepo := account.NewSessionRepository(pool)
+	accountSvc := account.NewService(accRepo, prefRepo, accSessRepo, log)
+	accountHdl := account.NewHandler(accountSvc)
+
+	// # 13. API Assembly
 	handlers := api.Handlers{
 		Liveness:  liveness,
 		Readiness: readiness,
 		Auth:      authHdl,
 		Comic:     comicHdl,
-		Reference: refHdl,
+		Chapter:   chapterHdl,
+		Author:    authorHdl,
+		Artist:    artistHdl,
+		Language:  languageHdl,
+		Tag:       tagHdl,
 		Group:     groupHdl,
+		Account:   accountHdl,
 	}
 
 	// Create a background context for the whole application lifecycle

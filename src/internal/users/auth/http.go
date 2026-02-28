@@ -126,13 +126,11 @@ Response:
 func (handler *Handler) register(writer http.ResponseWriter, request *http.Request) {
 	var input registerRequest
 
-	// Strict JSON decoding
 	if err := requestutil.DecodeJSON(request, &input); err != nil {
 		respond.Error(writer, request, validate.ErrInvalidJSON)
 		return
 	}
 
-	// Validate input fields
 	validator := &validate.Validator{}
 	validator.Required(FieldUsername, input.Username).
 		MinLen(FieldUsername, input.Username, 3).
@@ -141,13 +139,11 @@ func (handler *Handler) register(writer http.ResponseWriter, request *http.Reque
 		Required(FieldPassword, input.Password).
 		MinLen(FieldPassword, input.Password, 8)
 
-	// Return validation errors if any constraints failed
 	if err := validator.Err(); err != nil {
 		respond.Error(writer, request, err)
 		return
 	}
 
-	// Domain Logic Execution
 	user, err := handler.authService.Register(request.Context(), RegisterInput{
 		Username:    input.Username,
 		Email:       input.Email,
@@ -155,13 +151,11 @@ func (handler *Handler) register(writer http.ResponseWriter, request *http.Reque
 		DisplayName: input.DisplayName,
 	})
 
-	// Return domain errors
 	if err != nil {
 		respond.Error(writer, request, err)
 		return
 	}
 
-	// Structured API Response
 	respond.Created(writer, user)
 }
 
@@ -183,24 +177,20 @@ Response:
 func (handler *Handler) login(writer http.ResponseWriter, request *http.Request) {
 	var input loginRequest
 
-	// Strict JSON decoding
 	if err := requestutil.DecodeJSON(request, &input); err != nil {
 		respond.Error(writer, request, validate.ErrInvalidJSON)
 		return
 	}
 
-	// Validate mandatory fields
 	validator := &validate.Validator{}
 	validator.Required(FieldLogin, input.Login)
 	validator.Required(FieldPassword, input.Password)
 
-	// Return validation errors if any constraints failed
 	if err := validator.Err(); err != nil {
 		respond.Error(writer, request, err)
 		return
 	}
 
-	// Domain Logic Execution
 	session, err := handler.authService.Login(request.Context(), LoginInput{
 		Login:     input.Login,
 		Password:  input.Password,
@@ -212,19 +202,16 @@ func (handler *Handler) login(writer http.ResponseWriter, request *http.Request)
 		return
 	}
 
-	// Inject secure refresh token cookie
 	http.SetCookie(writer, &http.Cookie{
 		Name:     constants.RefreshTokenCookieName,
 		Value:    session.RefreshToken,
 		Path:     constants.RefreshTokenCookiePath,
-		Domain:   "",
 		Expires:  session.RefreshTokenExpiresAt,
 		Secure:   true,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
 	})
 
-	// Structured API Response
 	respond.OK(writer, map[string]any{
 		"access_token": session.AccessToken,
 		"user":         session.User,
@@ -243,16 +230,12 @@ Response:
   - 204: No Content: Session terminated
 */
 func (handler *Handler) logout(writer http.ResponseWriter, request *http.Request) {
-
-	// Extract refresh token for server-side invalidation
 	cookie, err := request.Cookie(constants.RefreshTokenCookieName)
 
-	// Attempt session invalidation if token exists
 	if err == nil && cookie != nil && cookie.Value != "" {
 		_ = handler.authService.Logout(request.Context(), cookie.Value)
 	}
 
-	// Clear security cookies on the client side
 	http.SetCookie(writer, &http.Cookie{
 		Name:     constants.RefreshTokenCookieName,
 		Value:    "",
@@ -279,15 +262,12 @@ Response:
   - 401: ErrUnauthorized: Missing or invalid refresh token
 */
 func (handler *Handler) refresh(writer http.ResponseWriter, request *http.Request) {
-
-	// Extract refresh token from secure cookie
 	cookie, err := request.Cookie(constants.RefreshTokenCookieName)
 	if err != nil || cookie.Value == "" {
 		respond.Error(writer, request, apperr.Unauthorized("Missing refresh token in cookies"))
 		return
 	}
 
-	// Domain Logic Execution (Session Rotation)
 	session, err := handler.authService.RefreshSession(
 		request.Context(),
 		cookie.Value,
@@ -300,7 +280,6 @@ func (handler *Handler) refresh(writer http.ResponseWriter, request *http.Reques
 		return
 	}
 
-	// Issue rotated refresh token cookie
 	http.SetCookie(writer, &http.Cookie{
 		Name:     constants.RefreshTokenCookieName,
 		Value:    session.RefreshToken,
@@ -311,7 +290,6 @@ func (handler *Handler) refresh(writer http.ResponseWriter, request *http.Reques
 		SameSite: http.SameSiteStrictMode,
 	})
 
-	// Structured API Response
 	respond.OK(writer, map[string]any{
 		FieldAccessToken: session.AccessToken,
 		FieldTokenType:   "Bearer",
@@ -350,25 +328,21 @@ Response:
 func (handler *Handler) verifyEmail(writer http.ResponseWriter, request *http.Request) {
 	var input verifyEmailRequest
 
-	// Strict JSON decoding
 	if err := requestutil.DecodeJSON(request, &input); err != nil {
 		respond.Error(writer, request, validate.ErrInvalidJSON)
 		return
 	}
 
-	// Validate mandatory token
 	if input.Token == "" {
 		respond.Error(writer, request, validate.RequiredError(FieldToken, "is required"))
 		return
 	}
 
-	// Domain Logic Execution
 	if err := handler.authService.VerifyEmail(request.Context(), input.Token); err != nil {
 		respond.Error(writer, request, err)
 		return
 	}
 
-	// Structured API Response
 	respond.OK(writer, map[string]string{
 		FieldMessage: "Email verified successfully",
 	})
@@ -391,13 +365,11 @@ Response:
 func (handler *Handler) forgotPassword(writer http.ResponseWriter, request *http.Request) {
 	var input forgotPasswordRequest
 
-	// Strict JSON decoding
 	if err := requestutil.DecodeJSON(request, &input); err != nil {
 		respond.Error(writer, request, validate.ErrInvalidJSON)
 		return
 	}
 
-	// Validate email format
 	v := &validate.Validator{}
 	v.Required(FieldEmail, input.Email).Email(FieldEmail, input.Email)
 
@@ -406,14 +378,12 @@ func (handler *Handler) forgotPassword(writer http.ResponseWriter, request *http
 		return
 	}
 
-	// Domain Logic Execution (Idempotent for security)
 	_, err := handler.authService.RequestPasswordReset(request.Context(), input.Email)
 	if err != nil {
 		respond.Error(writer, request, err)
 		return
 	}
 
-	// Standardize response to prevent identity enumeration
 	respond.OK(writer, map[string]string{
 		FieldMessage: "If this email is registered, a reset link has been sent.",
 	})
@@ -436,13 +406,11 @@ Response:
 func (handler *Handler) resetPassword(writer http.ResponseWriter, request *http.Request) {
 	var input resetPasswordRequest
 
-	// Strict JSON decoding
 	if err := requestutil.DecodeJSON(request, &input); err != nil {
 		respond.Error(writer, request, validate.ErrInvalidJSON)
 		return
 	}
 
-	// Validate token and password complexity
 	v := &validate.Validator{}
 	v.Required(FieldToken, input.Token).
 		Required(FieldPassword, input.Password).
@@ -453,13 +421,11 @@ func (handler *Handler) resetPassword(writer http.ResponseWriter, request *http.
 		return
 	}
 
-	// Domain Logic Execution
 	if err := handler.authService.ResetPassword(request.Context(), input.Token, input.Password); err != nil {
 		respond.Error(writer, request, err)
 		return
 	}
 
-	// Structured API Response
 	respond.OK(writer, map[string]string{
 		FieldMessage: "Password updated successfully",
 	})
@@ -482,29 +448,24 @@ Response:
   - 400: ErrInvalidJSON: Weak password or validation failure
 */
 func (handler *Handler) changePassword(writer http.ResponseWriter, request *http.Request) {
-
-	// Extract identity from authenticated context
-	claims := requestutil.Claims(request)
-	if claims == nil {
-		respond.Error(writer, request, apperr.Unauthorized("Authentication required"))
+	claims, err := requestutil.RequiredClaims(request)
+	if err != nil {
+		respond.Error(writer, request, err)
 		return
 	}
 
-	// Extract active refresh session for invalidation bypass
 	cookie, err := request.Cookie(constants.RefreshTokenCookieName)
 	if err != nil || cookie.Value == "" {
 		respond.Error(writer, request, apperr.Unauthorized("Missing active session cookie"))
 		return
 	}
 
-	// Strict JSON decoding
 	var input changePasswordRequest
 	if err := requestutil.DecodeJSON(request, &input); err != nil {
 		respond.Error(writer, request, validate.ErrInvalidJSON)
 		return
 	}
 
-	// Validate inputs
 	v := &validate.Validator{}
 	v.Required(FieldCurrentPassword, input.CurrentPassword).
 		Required(FieldNewPassword, input.NewPassword).
@@ -515,7 +476,6 @@ func (handler *Handler) changePassword(writer http.ResponseWriter, request *http
 		return
 	}
 
-	// Domain Logic Execution
 	err = handler.authService.ChangePassword(
 		request.Context(),
 		claims.UserID,
@@ -529,7 +489,6 @@ func (handler *Handler) changePassword(writer http.ResponseWriter, request *http
 		return
 	}
 
-	// Structured API Response
 	respond.OK(writer, map[string]string{
 		FieldMessage: "Password changed successfully",
 	})

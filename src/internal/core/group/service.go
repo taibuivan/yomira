@@ -5,6 +5,7 @@ package group
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/taibuivan/yomira/internal/platform/validate"
 	"github.com/taibuivan/yomira/pkg/slug"
@@ -15,12 +16,16 @@ import (
 
 // Service orchestrates business rules for scanlation groups and memberships.
 type Service struct {
-	repo Repository
+	repo   Repository
+	logger *slog.Logger
 }
 
 // NewService constructs a new group [Service].
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository, logger *slog.Logger) *Service {
+	return &Service{
+		repo:   repo,
+		logger: logger,
+	}
 }
 
 // # Group Management
@@ -76,8 +81,6 @@ Returns:
   - error: Validation or persistence failures
 */
 func (service *Service) CreateGroup(context context.Context, group *Group, creatorID string) error {
-
-	// Validation Pipeline
 	validator := &validate.Validator{}
 	validator.Required(FieldName, group.Name).MaxLen(FieldName, group.Name, 200)
 
@@ -89,23 +92,28 @@ func (service *Service) CreateGroup(context context.Context, group *Group, creat
 		return err
 	}
 
-	// Entity Initialisation
-	// We generate the UUID v7 and slug based on the validated name.
 	group.ID = uuid.New()
 	group.Slug = slug.From(group.Name)
 	group.IsActive = true
 
-	// Persistence Orchestration
-	// First commit the group, then establish the initial leadership.
 	if err := service.repo.Create(context, group); err != nil {
 		return err
 	}
 
-	return service.repo.AddMember(context, &Member{
+	if err := service.repo.AddMember(context, &Member{
 		GroupID: group.ID,
 		UserID:  creatorID,
 		Role:    RoleLeader,
-	})
+	}); err != nil {
+		return err
+	}
+
+	service.logger.Info("group_created",
+		slog.String("group_id", group.ID),
+		slog.String("creator_id", creatorID),
+	)
+
+	return nil
 }
 
 /*
@@ -119,15 +127,11 @@ Returns:
   - error: Validation or persistence failures
 */
 func (service *Service) UpdateGroup(context context.Context, group *Group) error {
-
-	// Partial Validation
-	// Only validate fields if they are provided in the update payload.
 	validator := &validate.Validator{}
 	if group.Name != "" {
 		validator.MaxLen("name", group.Name, 200)
 	}
 
-	// Validate website if provided
 	if group.Website != nil {
 		validator.URL("website", *group.Website)
 	}
@@ -136,7 +140,13 @@ func (service *Service) UpdateGroup(context context.Context, group *Group) error
 		return err
 	}
 
-	return service.repo.Update(context, group)
+	if err := service.repo.Update(context, group); err != nil {
+		return err
+	}
+
+	service.logger.Info("group_updated", slog.String("group_id", group.ID))
+
+	return nil
 }
 
 // # Membership Controls
@@ -198,7 +208,16 @@ Returns:
   - error: Persistence failures
 */
 func (service *Service) FollowGroup(context context.Context, groupID, userID string) error {
-	return service.repo.Follow(context, groupID, userID)
+	if err := service.repo.Follow(context, groupID, userID); err != nil {
+		return err
+	}
+
+	service.logger.Info("user_followed_group",
+		slog.String("group_id", groupID),
+		slog.String("user_id", userID),
+	)
+
+	return nil
 }
 
 /*
@@ -213,5 +232,14 @@ Returns:
   - error: Persistence failures
 */
 func (service *Service) UnfollowGroup(context context.Context, groupID, userID string) error {
-	return service.repo.Unfollow(context, groupID, userID)
+	if err := service.repo.Unfollow(context, groupID, userID); err != nil {
+		return err
+	}
+
+	service.logger.Info("user_unfollowed_group",
+		slog.String("group_id", groupID),
+		slog.String("user_id", userID),
+	)
+
+	return nil
 }

@@ -31,6 +31,7 @@ type User struct {
 	DisplayName  string       `json:"display_name"`
 	AvatarURL    string       `json:"avatar_url,omitempty"`
 	Bio          string       `json:"bio,omitempty"`
+	Website      string       `json:"website,omitempty"`
 	Role         sec.UserRole `json:"role"`
 	IsVerified   bool         `json:"is_verified"`
 	CreatedAt    time.Time    `json:"created_at"`

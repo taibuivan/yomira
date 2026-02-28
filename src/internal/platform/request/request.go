@@ -14,6 +14,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/taibuivan/yomira/internal/platform/apperr"
 	"github.com/taibuivan/yomira/internal/platform/ctxutil"
 	"github.com/taibuivan/yomira/internal/platform/sec"
 	"github.com/taibuivan/yomira/internal/platform/validate"
@@ -57,4 +58,44 @@ Returns nil if the request is not authenticated.
 */
 func Claims(request *http.Request) *sec.AuthClaims {
 	return ctxutil.GetAuthUser(request.Context())
+}
+
+/*
+RequiredClaims ensures the request is authenticated and returns the user claims.
+
+Returns:
+  - *sec.AuthClaims: The authenticated user claims
+  - error: apperr.Unauthorized if the request is not authenticated
+*/
+func RequiredClaims(request *http.Request) (*sec.AuthClaims, error) {
+
+	// Get user claims
+	claims := ctxutil.GetAuthUser(request.Context())
+
+	// If the user is not authenticated, return an error
+	if claims == nil {
+		return nil, apperr.Unauthorized("Authentication required")
+	}
+
+	return claims, nil
+}
+
+/*
+RequiredUserID returns the User ID of the currently logged-in user.
+
+Returns:
+  - string: User UUID
+  - error: apperr.Unauthorized if not authenticated
+*/
+func RequiredUserID(request *http.Request) (string, error) {
+
+	// Get user claims
+	claims, err := RequiredClaims(request)
+
+	// If the user is not authenticated, return an error
+	if err != nil {
+		return "", err
+	}
+
+	return claims.UserID, nil
 }

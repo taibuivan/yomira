@@ -45,7 +45,7 @@ func RequestID() func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 
 			// 1. Check if the client already provided an ID
-			requestID := request.Header.Get("X-Request-ID")
+			requestID := request.Header.Get(constants.HeaderXRequestID)
 
 			// 2. Generate a new one if missing (using UUID v7 for time-sortable properties)
 			if requestID == "" {
@@ -59,7 +59,7 @@ func RequestID() func(http.Handler) http.Handler {
 
 			// 3. Inject into context and response headers
 			ctx := ctxutil.WithRequestID(request.Context(), requestID)
-			writer.Header().Set("X-Request-ID", requestID)
+			writer.Header().Set(constants.HeaderXRequestID, requestID)
 
 			next.ServeHTTP(writer, request.WithContext(ctx))
 		})
@@ -252,7 +252,7 @@ func CORS(cfg AppConfig) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 
 			// 1. Check the Origin header
-			origin := request.Header.Get("Origin")
+			origin := request.Header.Get(constants.HeaderOrigin)
 			if origin == "" {
 				next.ServeHTTP(writer, request)
 				return
@@ -296,11 +296,11 @@ func CORS(cfg AppConfig) func(http.Handler) http.Handler {
 func RealIP(request *http.Request) string {
 
 	// Check standard proxy headers first
-	if ip := request.Header.Get("X-Real-IP"); ip != "" {
+	if ip := request.Header.Get(constants.HeaderXRealIP); ip != "" {
 		return ip
 	}
 
-	if forwarded := request.Header.Get("X-Forwarded-For"); forwarded != "" {
+	if forwarded := request.Header.Get(constants.HeaderXForwardedFor); forwarded != "" {
 		return strings.TrimSpace(strings.Split(forwarded, ",")[0])
 	}
 

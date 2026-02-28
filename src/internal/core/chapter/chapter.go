@@ -15,7 +15,7 @@ metadata such as chapter numbering, language localization, and translator attrib
 
 This file complements the core [Comic] aggregate by defining its structural parts.
 */
-package comic
+package chapter
 
 import "time"
 

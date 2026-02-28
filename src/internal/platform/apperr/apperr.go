@@ -77,6 +77,14 @@ func IsAppError(err error) bool {
 }
 
 /*
+IsNotFound reports whether err is an AppError with code NOT_FOUND.
+*/
+func IsNotFound(err error) bool {
+	ae := As(err)
+	return ae != nil && ae.Code == "NOT_FOUND"
+}
+
+/*
 As extracts the [*AppError] from err's chain. It returns nil if not found.
 
 Parameters:
@@ -183,6 +191,18 @@ func ValidationError(msg string, details ...FieldError) *AppError {
 		Message:    msg,
 		HTTPStatus: http.StatusBadRequest,
 		Details:    details,
+	}
+}
+
+/*
+BadRequest creates a 400 [AppError] for generic client errors.
+*/
+func BadRequest(msg string, cause error) *AppError {
+	return &AppError{
+		Code:       "BAD_REQUEST",
+		Message:    msg,
+		HTTPStatus: http.StatusBadRequest,
+		Cause:      cause,
 	}
 }
 

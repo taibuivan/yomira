@@ -7,7 +7,7 @@ Package auth implements the core identity and access management (IAM) system.
 It handles everything from user registration and secure password hashing to session
 lifecycle management via JWT and Refresh tokens (stored in Redis).
 
-Architecture:
+# Architecture
 
   - Service: Orchestrates business logic (Register, Login, MFA).
   - Repository: Abstracted interfaces for Postgres (Users) and Redis (Sessions).
@@ -21,6 +21,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/taibuivan/yomira/internal/platform/apperr"
@@ -57,6 +58,7 @@ type Service struct {
 	resetTokenRepository        ResetTokenRepository
 	verificationTokenRepository VerificationTokenRepository
 	tokenProvider               TokenProvider
+	logger                      *slog.Logger
 }
 
 // NewService constructs a new [AuthService] with necessary dependencies.
@@ -66,6 +68,7 @@ func NewService(
 	resetRepo ResetTokenRepository,
 	verifyRepo VerificationTokenRepository,
 	tokenProv TokenProvider,
+	logger *slog.Logger,
 ) *Service {
 	return &Service{
 		userRepository:              userRepo,
@@ -73,6 +76,7 @@ func NewService(
 		resetTokenRepository:        resetRepo,
 		verificationTokenRepository: verifyRepo,
 		tokenProvider:               tokenProv,
+		logger:                      logger,
 	}
 }
 
@@ -143,6 +147,8 @@ func (service *Service) Register(context context.Context, input RegisterInput) (
 		_ = service.verificationTokenRepository.Set(context, token, user.ID, VerificationTokenTTL)
 		// TODO: Trigger email service with the verification link
 	}
+
+	service.logger.Info("user_registered", slog.String("user_id", user.ID))
 
 	return user, nil
 }
@@ -225,6 +231,8 @@ func (service *Service) Login(context context.Context, input LoginInput) (*Login
 	if err := service.sessionRepository.Create(context, session); err != nil {
 		return nil, fmt.Errorf("auth_service_session_creation_failed: %w", err)
 	}
+
+	service.logger.Info("user_logged_in", slog.String("user_id", user.ID))
 
 	return &LoginSession{
 		AccessToken:           accessToken,
@@ -419,6 +427,8 @@ func (service *Service) ResetPassword(context context.Context, token, newPasswor
 	// Delete the used token from Redis
 	_ = service.resetTokenRepository.Delete(context, token)
 
+	service.logger.Warn("user_password_reset", slog.String("user_id", userID))
+
 	return nil
 }
 
@@ -469,6 +479,8 @@ func (service *Service) ChangePassword(context context.Context, userID, currentP
 		_ = service.sessionRepository.RevokeOthers(context, userID, session.ID)
 	}
 
+	service.logger.Info("user_password_changed", slog.String("user_id", userID))
+
 	return nil
 }
 
@@ -497,6 +509,8 @@ func (service *Service) VerifyEmail(context context.Context, token string) error
 
 	// Cleanup the used verification token from Redis
 	_ = service.verificationTokenRepository.Delete(context, token)
+
+	service.logger.Info("user_email_verified", slog.String("user_id", userID))
 
 	return nil
 }

@@ -112,3 +112,29 @@ const (
 	RedisPrefixVerifyToken = "auth:verify_token:"
 	RedisPrefixSession     = "auth:session:"
 )
+
+// # HTTP Headers
+// Centralizing custom and standard headers to avoid magic strings.
+
+const (
+	HeaderXRequestID    = "X-Request-ID"
+	HeaderXRealIP       = "X-Real-IP"
+	HeaderXForwardedFor = "X-Forwarded-For"
+	HeaderAuthorization = "Authorization"
+	HeaderContentType   = "Content-Type"
+	HeaderOrigin        = "Origin"
+	HeaderUserAgent     = "User-Agent"
+)
+
+// # Database Tables
+// Mapping table names to constants makes schema migrations and refactoring safer.
+
+const (
+	TableUserAccount     = "users.account"
+	TableUserSession     = "users.session"
+	TableUserPreference  = "users.readingpreference"
+	TableCoreGroup       = "core.groups"
+	TableCoreGroupMember = "core.group_members"
+	TableCoreComic       = "core.comics"
+	TableCoreChapter     = "core.chapters"
+)

@@ -17,10 +17,10 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/taibuivan/yomira/internal/platform/apperr"
 	"github.com/taibuivan/yomira/internal/platform/constants"
 	requestutil "github.com/taibuivan/yomira/internal/platform/request"
 	"github.com/taibuivan/yomira/internal/platform/respond"
+	"github.com/taibuivan/yomira/internal/platform/validate"
 	"github.com/taibuivan/yomira/pkg/pagination"
 )
 
@@ -84,12 +84,10 @@ func (handler *Handler) listGroups(writer http.ResponseWriter, request *http.Req
 	paginationParams := pagination.FromRequest(request)
 	queryParams := request.URL.Query()
 
-	// Filter Initialization
 	filter := Filter{
 		Query: queryParams.Get("q"),
 	}
 
-	// Filter Application
 	if isOfficial := queryParams.Get("isofficial"); isOfficial != "" {
 		value := isOfficial == "true"
 		filter.IsOfficialPublisher = &value
@@ -144,31 +142,35 @@ Response:
   - 401: 401: ErrUnauthorized: Authentication required
 */
 func (handler *Handler) createGroup(writer http.ResponseWriter, request *http.Request) {
-
-	// Account Extraction
-	claims := requestutil.Claims(request)
-	if claims == nil {
-		respond.Error(writer, request, apperr.Unauthorized("Authentication required"))
+	userID, err := requestutil.RequiredUserID(request)
+	if err != nil {
+		respond.Error(writer, request, err)
 		return
 	}
 
-	// Payload Initialisation
-	userID := claims.UserID
 	var input Group
 
-	// Decode Pipeline
 	if err := requestutil.DecodeJSON(request, &input); err != nil {
 		respond.Error(writer, request, err)
 		return
 	}
 
-	// Business Orchestration
+	v := &validate.Validator{}
+	v.Required("name", input.Name).MaxLen("name", input.Name, 200)
+	if input.Website != nil && *input.Website != "" {
+		v.URL("website", *input.Website)
+	}
+
+	if err := v.Err(); err != nil {
+		respond.Error(writer, request, err)
+		return
+	}
+
 	if err := handler.service.CreateGroup(request.Context(), &input, userID); err != nil {
 		respond.Error(writer, request, err)
 		return
 	}
 
-	// OK Delivery
 	respond.Created(writer, input)
 }
 
@@ -189,27 +191,34 @@ Response:
   - 404: 404: ErrNotFound: Group not found
 */
 func (handler *Handler) updateGroup(writer http.ResponseWriter, request *http.Request) {
-
-	// Route Targets
 	groupID := requestutil.ID(request, "id")
 
-	// Payload Initialisation
 	var input Group
 	if err := requestutil.DecodeJSON(request, &input); err != nil {
 		respond.Error(writer, request, err)
 		return
 	}
 
-	// Alignment
+	v := &validate.Validator{}
+	if input.Name != "" {
+		v.MaxLen("name", input.Name, 200)
+	}
+	if input.Website != nil && *input.Website != "" {
+		v.URL("website", *input.Website)
+	}
+
+	if err := v.Err(); err != nil {
+		respond.Error(writer, request, err)
+		return
+	}
+
 	input.ID = groupID
 
-	// Logic Execution
 	if err := handler.service.UpdateGroup(request.Context(), &input); err != nil {
 		respond.Error(writer, request, err)
 		return
 	}
 
-	// Feedback Delivery
 	respond.OK(writer, input)
 }
 
@@ -253,24 +262,19 @@ Response:
   - 404: 404: ErrNotFound: Group not found
 */
 func (handler *Handler) followGroup(writer http.ResponseWriter, request *http.Request) {
-
-	// Targets
 	groupID := requestutil.ID(request, "id")
 
-	// Authentication Check
-	claims := requestutil.Claims(request)
-	if claims == nil {
-		respond.Error(writer, request, apperr.Unauthorized("Login required to follow groups"))
-		return
-	}
-
-	// Logic Dispatch
-	if err := handler.service.FollowGroup(request.Context(), groupID, claims.UserID); err != nil {
+	userID, err := requestutil.RequiredUserID(request)
+	if err != nil {
 		respond.Error(writer, request, err)
 		return
 	}
 
-	// Feedback
+	if err := handler.service.FollowGroup(request.Context(), groupID, userID); err != nil {
+		respond.Error(writer, request, err)
+		return
+	}
+
 	respond.Created(writer, map[string]string{constants.FieldMessage: "Following group"})
 }
 
@@ -288,24 +292,19 @@ Response:
   - 404: 404: ErrNotFound: Subscription not found
 */
 func (handler *Handler) unfollowGroup(writer http.ResponseWriter, request *http.Request) {
-
-	// Target Extraction
 	groupID := requestutil.ID(request, "id")
 
-	// Identity Verification
-	claims := requestutil.Claims(request)
-	if claims == nil {
-		respond.Error(writer, request, apperr.Unauthorized("Login required to unfollow groups"))
-		return
-	}
-
-	// Logic Dispatch
-	if err := handler.service.UnfollowGroup(request.Context(), groupID, claims.UserID); err != nil {
+	userID, err := requestutil.RequiredUserID(request)
+	if err != nil {
 		respond.Error(writer, request, err)
 		return
 	}
 
-	// Feedback
+	if err := handler.service.UnfollowGroup(request.Context(), groupID, userID); err != nil {
+		respond.Error(writer, request, err)
+		return
+	}
+
 	respond.NoContent(writer)
 }
 
@@ -358,17 +357,13 @@ Response:
   - 404: 404: ErrNotFound: Member not found
 */
 func (handler *Handler) removeMember(writer http.ResponseWriter, request *http.Request) {
-
-	// Variable targets
 	groupID := requestutil.ID(request, "id")
 	userID := requestutil.ID(request, "userID")
 
-	// Logic Dispatch
 	if err := handler.service.RemoveMember(request.Context(), groupID, userID); err != nil {
 		respond.Error(writer, request, err)
 		return
 	}
 
-	// Feedback
 	respond.NoContent(writer)
 }

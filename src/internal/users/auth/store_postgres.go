@@ -1,18 +1,20 @@
 // Copyright (c) 2026 Yomira. All rights reserved.
 // Author: tai.buivan.jp@gmail.com
 
-// Package postgres implements the storage layer for the Yomira application using PostgreSQL.
-//
-// # Architecture
-//
-// Repositories in this package are strictly separated from domain logic. They
-// implement domain-defined interfaces (e.g., [UserRepository]) using the
-// [pgxpool.Pool] connection manager.
-//
-// # err Mapping
-//
-// Storage-specific errors (like pgx.ErrNoRows) are mapped to domain-friendly
-// [apperr.AppError] types to avoid leaking storage implementation details.
+/*
+Package api implements the observability endpoints for the Yomira platform.
+
+It provides standard Kubernetes-style probes (liveness, readiness) to monitor the
+operational health of the application and its critical dependencies.
+
+Architecture:
+
+  - Liveness: Returns 200 OK as long as the process is running.
+  - Readiness: Performs shallow pings of Postgres and Redis to verify connectivity.
+
+These handlers ensure that traffic is only routed to "warm" instances that are
+fully connected to the data plane.
+*/
 package auth
 
 import (
@@ -25,6 +27,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/taibuivan/yomira/internal/platform/apperr"
+	"github.com/taibuivan/yomira/internal/platform/database/schema"
 )
 
 // # User Repository
@@ -53,10 +56,16 @@ Returns:
   - error: Database constraint violations or connectivity errors
 */
 func (repository *PostgresUserRepository) Create(context context.Context, user *User) error {
-	const query = `
-		INSERT INTO users.account (
-			id, username, email, passwordhash, displayname, role, isverified, createdat, updatedat
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	query := fmt.Sprintf(`
+		INSERT INTO %s (
+			%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		schema.UserAccount.Table,
+		schema.UserAccount.ID, schema.UserAccount.Username, schema.UserAccount.Email,
+		schema.UserAccount.Password, schema.UserAccount.DisplayName, schema.UserAccount.AvatarURL,
+		schema.UserAccount.Bio, schema.UserAccount.Website, schema.UserAccount.Role,
+		schema.UserAccount.IsVerified, schema.UserAccount.CreatedAt, schema.UserAccount.UpdatedAt,
+	)
 
 	now := time.Now()
 	if user.CreatedAt.IsZero() {
@@ -70,6 +79,9 @@ func (repository *PostgresUserRepository) Create(context context.Context, user *
 		user.Email,
 		user.PasswordHash,
 		user.DisplayName,
+		user.AvatarURL,
+		user.Bio,
+		user.Website,
 		user.Role,
 		user.IsVerified,
 		user.CreatedAt,
@@ -97,10 +109,16 @@ Returns:
   - error: apperr.NotFound or database errors
 */
 func (repository *PostgresUserRepository) FindByEmail(context context.Context, email string) (*User, error) {
-	const query = `
-		SELECT id, username, email, passwordhash, displayname, role, isverified, createdat, updatedat
-		FROM users.account
-		WHERE email = $1 AND deletedat IS NULL`
+	query := fmt.Sprintf(`
+		SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+		FROM %s
+		WHERE %s = $1 AND %s IS NULL`,
+		schema.UserAccount.ID, schema.UserAccount.Username, schema.UserAccount.Email,
+		schema.UserAccount.Password, schema.UserAccount.DisplayName, schema.UserAccount.AvatarURL,
+		schema.UserAccount.Bio, schema.UserAccount.Website, schema.UserAccount.Role,
+		schema.UserAccount.IsVerified, schema.UserAccount.CreatedAt, schema.UserAccount.UpdatedAt,
+		schema.UserAccount.Table, schema.UserAccount.Email, schema.UserAccount.DeletedAt,
+	)
 
 	user := &User{}
 	err := repository.pool.QueryRow(context, query, email).Scan(
@@ -109,6 +127,9 @@ func (repository *PostgresUserRepository) FindByEmail(context context.Context, e
 		&user.Email,
 		&user.PasswordHash,
 		&user.DisplayName,
+		&user.AvatarURL,
+		&user.Bio,
+		&user.Website,
 		&user.Role,
 		&user.IsVerified,
 		&user.CreatedAt,
@@ -139,10 +160,16 @@ Returns:
   - error: apperr.NotFound or database errors
 */
 func (repository *PostgresUserRepository) FindByUsername(context context.Context, username string) (*User, error) {
-	const query = `
-		SELECT id, username, email, passwordhash, displayname, role, isverified, createdat, updatedat
-		FROM users.account
-		WHERE username = $1 AND deletedat IS NULL`
+	query := fmt.Sprintf(`
+		SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+		FROM %s
+		WHERE %s = $1 AND %s IS NULL`,
+		schema.UserAccount.ID, schema.UserAccount.Username, schema.UserAccount.Email,
+		schema.UserAccount.Password, schema.UserAccount.DisplayName, schema.UserAccount.AvatarURL,
+		schema.UserAccount.Bio, schema.UserAccount.Website, schema.UserAccount.Role,
+		schema.UserAccount.IsVerified, schema.UserAccount.CreatedAt, schema.UserAccount.UpdatedAt,
+		schema.UserAccount.Table, schema.UserAccount.Username, schema.UserAccount.DeletedAt,
+	)
 
 	user := &User{}
 	err := repository.pool.QueryRow(context, query, username).Scan(
@@ -151,6 +178,9 @@ func (repository *PostgresUserRepository) FindByUsername(context context.Context
 		&user.Email,
 		&user.PasswordHash,
 		&user.DisplayName,
+		&user.AvatarURL,
+		&user.Bio,
+		&user.Website,
 		&user.Role,
 		&user.IsVerified,
 		&user.CreatedAt,
@@ -181,10 +211,16 @@ Returns:
   - error: Not found or execution errors
 */
 func (repository *PostgresUserRepository) FindByID(context context.Context, id string) (*User, error) {
-	const query = `
-		SELECT id, username, email, passwordhash, displayname, role, isverified, createdat, updatedat
-		FROM users.account
-		WHERE id = $1 AND deletedat IS NULL`
+	query := fmt.Sprintf(`
+		SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+		FROM %s
+		WHERE %s = $1 AND %s IS NULL`,
+		schema.UserAccount.ID, schema.UserAccount.Username, schema.UserAccount.Email,
+		schema.UserAccount.Password, schema.UserAccount.DisplayName, schema.UserAccount.AvatarURL,
+		schema.UserAccount.Bio, schema.UserAccount.Website, schema.UserAccount.Role,
+		schema.UserAccount.IsVerified, schema.UserAccount.CreatedAt, schema.UserAccount.UpdatedAt,
+		schema.UserAccount.Table, schema.UserAccount.ID, schema.UserAccount.DeletedAt,
+	)
 
 	user := &User{}
 	err := repository.pool.QueryRow(context, query, id).Scan(
@@ -193,6 +229,9 @@ func (repository *PostgresUserRepository) FindByID(context context.Context, id s
 		&user.Email,
 		&user.PasswordHash,
 		&user.DisplayName,
+		&user.AvatarURL,
+		&user.Bio,
+		&user.Website,
 		&user.Role,
 		&user.IsVerified,
 		&user.CreatedAt,
@@ -223,10 +262,15 @@ Returns:
   - error: Update failures
 */
 func (repository *PostgresUserRepository) Update(context context.Context, user *User) error {
-	const query = `
-		UPDATE users.account
-		SET username = $2, displayname = $3, avatarurl = $4, bio = $5, updatedat = $6
-		WHERE id = $1 AND deletedat IS NULL`
+	query := fmt.Sprintf(`
+		UPDATE %s
+		SET %s = $2, %s = $3, %s = $4, %s = $5, %s = $6, %s = $7
+		WHERE %s = $1 AND %s IS NULL`,
+		schema.UserAccount.Table,
+		schema.UserAccount.Username, schema.UserAccount.DisplayName, schema.UserAccount.AvatarURL,
+		schema.UserAccount.Bio, schema.UserAccount.Website, schema.UserAccount.UpdatedAt,
+		schema.UserAccount.ID, schema.UserAccount.DeletedAt,
+	)
 
 	user.UpdatedAt = time.Now()
 	_, err := repository.pool.Exec(context, query,
@@ -235,6 +279,7 @@ func (repository *PostgresUserRepository) Update(context context.Context, user *
 		user.DisplayName,
 		user.AvatarURL,
 		user.Bio,
+		user.Website,
 		user.UpdatedAt,
 	)
 
@@ -257,10 +302,13 @@ Returns:
   - error: Execution errors
 */
 func (repository *PostgresUserRepository) UpdatePassword(context context.Context, userID, newHash string) error {
-	const query = `
-		UPDATE users.account
-		SET passwordhash = $2, updatedat = $3
-		WHERE id = $1 AND deletedat IS NULL`
+	query := fmt.Sprintf(`
+		UPDATE %s
+		SET %s = $2, %s = $3
+		WHERE %s = $1 AND %s IS NULL`,
+		schema.UserAccount.Table, schema.UserAccount.Password, schema.UserAccount.UpdatedAt,
+		schema.UserAccount.ID, schema.UserAccount.DeletedAt,
+	)
 
 	_, err := repository.pool.Exec(context, query, userID, newHash, time.Now())
 	if err != nil {
@@ -304,7 +352,8 @@ Returns:
   - error: Database errors
 */
 func (repository *PostgresUserRepository) MarkVerified(context context.Context, userID string) error {
-	const query = "UPDATE users.account SET isverified = TRUE, updatedat = $2 WHERE id = $1"
+	query := fmt.Sprintf("UPDATE %s SET %s = TRUE, %s = $2 WHERE %s = $1",
+		schema.UserAccount.Table, schema.UserAccount.IsVerified, schema.UserAccount.UpdatedAt, schema.UserAccount.ID)
 	_, err := repository.pool.Exec(context, query, userID, time.Now())
 	if err != nil {
 		return fmt.Errorf("postgres_user_repo_mark_verified_failed: %w", err)
@@ -337,10 +386,15 @@ Returns:
   - error: Storage failures
 */
 func (repository *PostgresSessionRepository) Create(context context.Context, session *Session) error {
-	const query = `
-		INSERT INTO users.session (
-			id, userid, tokenhash, useragent, ipaddress, expiresat, isrevoked, createdat
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	query := fmt.Sprintf(`
+		INSERT INTO %s (
+			%s, %s, %s, %s, %s, %s, %s, %s
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		schema.UserSession.Table,
+		schema.UserSession.ID, schema.UserSession.UserID, schema.UserSession.TokenHash,
+		schema.UserSession.UserAgent, schema.UserSession.IPAddress, schema.UserSession.ExpiresAt,
+		schema.UserSession.IsRevoked, schema.UserSession.CreatedAt,
+	)
 
 	if session.CreatedAt.IsZero() {
 		session.CreatedAt = time.Now()
@@ -378,10 +432,16 @@ Returns:
   - error: apperr.NotFound or execution errors
 */
 func (repository *PostgresSessionRepository) FindByTokenHash(context context.Context, tokenHash string) (*Session, error) {
-	const query = `
-		SELECT id, userid, tokenhash, useragent, ipaddress, expiresat, isrevoked, createdat
-		FROM users.session
-		WHERE tokenhash = $1 AND isrevoked = FALSE AND expiresat > NOW()`
+	query := fmt.Sprintf(`
+		SELECT %s, %s, %s, %s, %s, %s, %s, %s
+		FROM %s
+		WHERE %s = $1 AND %s = FALSE AND %s > NOW()`,
+		schema.UserSession.ID, schema.UserSession.UserID, schema.UserSession.TokenHash,
+		schema.UserSession.UserAgent, schema.UserSession.IPAddress, schema.UserSession.ExpiresAt,
+		schema.UserSession.IsRevoked, schema.UserSession.CreatedAt,
+		schema.UserSession.Table,
+		schema.UserSession.TokenHash, schema.UserSession.IsRevoked, schema.UserSession.ExpiresAt,
+	)
 
 	session := &Session{}
 	err := repository.pool.QueryRow(context, query, tokenHash).Scan(
@@ -416,7 +476,8 @@ Returns:
   - error: Revocation failures
 */
 func (repository *PostgresSessionRepository) Revoke(context context.Context, sessionID string) error {
-	const query = "UPDATE users.session SET isrevoked = TRUE WHERE id = $1"
+	query := fmt.Sprintf("UPDATE %s SET %s = TRUE WHERE %s = $1",
+		schema.UserSession.Table, schema.UserSession.IsRevoked, schema.UserSession.ID)
 	_, err := repository.pool.Exec(context, query, sessionID)
 	if err != nil {
 		return fmt.Errorf("postgres_session_repo_revoke_failed: %w", err)
@@ -437,7 +498,8 @@ Returns:
   - error: Batch revocation failures
 */
 func (repository *PostgresSessionRepository) RevokeAll(context context.Context, userID string) error {
-	const query = "UPDATE users.session SET isrevoked = TRUE WHERE userid = $1 AND isrevoked = FALSE"
+	query := fmt.Sprintf("UPDATE %s SET %s = TRUE WHERE %s = $1 AND %s = FALSE",
+		schema.UserSession.Table, schema.UserSession.IsRevoked, schema.UserSession.UserID, schema.UserSession.IsRevoked)
 	_, err := repository.pool.Exec(context, query, userID)
 	if err != nil {
 		return fmt.Errorf("postgres_session_repo_revoke_all_failed: %w", err)
@@ -457,7 +519,9 @@ Returns:
   - error: Filtered revocation failures
 */
 func (repository *PostgresSessionRepository) RevokeOthers(context context.Context, userID, currentSessionID string) error {
-	const query = "UPDATE users.session SET isrevoked = TRUE WHERE userid = $1 AND id != $2 AND isrevoked = FALSE"
+	query := fmt.Sprintf("UPDATE %s SET %s = TRUE WHERE %s = $1 AND %s != $2 AND %s = FALSE",
+		schema.UserSession.Table, schema.UserSession.IsRevoked, schema.UserSession.UserID,
+		schema.UserSession.ID, schema.UserSession.IsRevoked)
 	_, err := repository.pool.Exec(context, query, userID, currentSessionID)
 	if err != nil {
 		return fmt.Errorf("postgres_session_repo_revoke_others_failed: %w", err)
@@ -477,7 +541,7 @@ Returns:
   - error: Cleanup failures
 */
 func (repository *PostgresSessionRepository) DeleteExpired(context context.Context) error {
-	const query = "DELETE FROM users.session WHERE expiresat <= NOW()"
+	query := fmt.Sprintf("DELETE FROM %s WHERE %s <= NOW()", schema.UserSession.Table, schema.UserSession.ExpiresAt)
 	_, err := repository.pool.Exec(context, query)
 	if err != nil {
 		return fmt.Errorf("postgres_session_repo_delete_expired_failed: %w", err)
